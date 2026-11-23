@@ -242,6 +242,17 @@ export function reorderProjects(ctx: Ctx, args: Args): void {
 }
 
 /** Archives a project and everything under it. The inbox cannot be archived. */
+/** Brings a project and its subprojects back from the archive; each must be administered, as for archiving. */
+export function unarchiveProject(ctx: Ctx, id: string): void {
+  const { db, viewer } = ctx;
+  requireProject(db, id, viewer.id, 'admin');
+  for (const projectId of projectTree(db, id)) requireProject(db, projectId, viewer.id, 'admin');
+  for (const projectId of projectTree(db, id)) {
+    db.prepare('UPDATE projects SET is_archived = 0, archived_at = NULL, seq = ? WHERE id = ? AND is_deleted = 0')
+      .run(nextSeq(db), projectId);
+  }
+}
+
 export function archiveProject(ctx: Ctx, id: string): void {
   const { db, viewer } = ctx;
   requireProject(db, id, viewer.id, 'admin');

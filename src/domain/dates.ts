@@ -2,7 +2,7 @@ import {
   addDays, differenceInCalendarDays, endOfWeek, format, isSameDay,
   parseISO, startOfDay, startOfWeek,
 } from 'date-fns';
-import { intlDate, intlRelative } from '@/lib/intl';
+import { intlDate, intlRelative } from '../lib/intl';
 import type { Item, TodoistDue } from './types';
 
 /** True when the due value carries a time of day, not just a calendar date. */

@@ -84,6 +84,8 @@ export function itemOut(row: ItemRow, noteCount = 0) {
     completed_at: row.completed_at,
     updated_at: row.updated_at,
     responsible_uid: row.responsible_uid,
+    added_by_uid: row.added_by ?? null,
+    assigned_by_uid: null,
     note_count: noteCount,
   };
 }

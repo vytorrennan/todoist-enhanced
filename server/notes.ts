@@ -35,7 +35,7 @@ function cleanAttachment(ctx: Ctx, raw: unknown): string | null {
 }
 
 /** A comment and the project it belongs to, if the viewer can see it. */
-function loadNote(ctx: Ctx, noteId: string, need: 'read' | 'write' = 'read') {
+export function loadNote(ctx: Ctx, noteId: string, need: 'read' | 'write' = 'read') {
   const row = ctx.db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId) as NoteRow | undefined;
   if (!row || row.is_deleted) throw ApiFailure.notFound('That comment does not exist.', 'NOTE_NOT_FOUND');
   const projectId = row.item_id

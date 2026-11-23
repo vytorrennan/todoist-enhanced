@@ -9,16 +9,16 @@ import {
 import { Router, readBody, response, sendFailure, serveStatic, spend, securityHeaders, type Request, type Response } from './http';
 import { userOut, projectOut } from './serialize';
 import { syncRequest } from './commands';
-import { archivedProjects, pageOf, projectPeople } from './projects';
-import { workspaceFolders, workspaceProjects, workspaceUsers, setWorkspaceRole } from './workspaces';
-import { completedByDate, completedTasks, readTask } from './history';
-import { filterPage } from './labels';
-import { listComments, setReaction } from './notes';
+import { projectPeople } from './projects';
+import { workspaceUsers, setWorkspaceRole } from './workspaces';
+import { completedTasks } from './history';
+import { registerRest } from './rest';
+
+import { setReaction } from './notes';
 import { fileFor, removeUpload, storeUpload, MAX_UPLOAD_BYTES, type StoredFile } from './files';
 import { updateUser } from './account';
 import { makeCtx, type Ctx } from './ctx';
 import { currentSeq } from './db';
-import { todayIn } from './dates';
 
 export interface AppOptions {
   /** Path of the SQLite file, or `:memory:` for tests. */
@@ -165,11 +165,6 @@ export function createApp(options: AppOptions): App {
     res.json(syncRequest(db, user, body as Parameters<typeof syncRequest>[2]));
   });
 
-  router.add('GET', '/api/v1/projects/archived', 'bearer', (req, res) => {
-    const user = req.user as UserRow;
-    const page = pageOf(archivedProjects(db, user.id, null), pageArgs(req).cursor, pageArgs(req).limit);
-    res.json({ results: page.items.map(projectOut), next_cursor: page.next_cursor, has_more: page.has_more });
-  });
 
   router.add('GET', '/api/v1/projects/:id/full', 'bearer', (req, res) => {
     const user = req.user as UserRow;
@@ -194,44 +189,18 @@ export function createApp(options: AppOptions): App {
     res.json({});
   });
 
-  router.add('GET', '/api/v1/workspaces/:id/projects/active', 'bearer', (req, res) => {
-    res.json(workspaceProjects(db, (req.user as UserRow).id, req.params.id, false, pageArgs(req).cursor));
-  });
 
-  router.add('GET', '/api/v1/workspaces/:id/projects/archived', 'bearer', (req, res) => {
-    res.json(workspaceProjects(db, (req.user as UserRow).id, req.params.id, true, pageArgs(req).cursor));
-  });
 
-  router.add('GET', '/api/v1/folders', 'bearer', (req, res) => {
-    res.json(workspaceFolders(db, (req.user as UserRow).id, req.query.get('workspace_id') ?? '', pageArgs(req).cursor));
-  });
-
-  router.add('GET', '/api/v1/tasks/completed/by_completion_date', 'bearer', (req, res) => {
-    res.json(completedByDate(db, (req.user as UserRow).id, queryOf(req)));
-  });
 
   router.add('GET', '/api/v1/tasks/completed', 'bearer', (req, res) => {
     res.json(completedTasks(db, (req.user as UserRow).id, queryOf(req)));
   });
 
-  router.add('GET', '/api/v1/tasks/filter', 'bearer', (req, res) => {
-    const user = req.user as UserRow;
-    const query = req.query.get('query') ?? '';
-    const page = pageArgs(req);
-    res.json(filterPage(db, user.id, query, todayIn(user.timezone), Number(page.cursor ?? 0) || 0, Math.min(page.limit, 500)));
-  });
+  // The REST API v1 (what the official SDK and MCP call): see rest.ts. Registered after the specific task routes it must not shadow.
+  registerRest(router, db);
 
-  router.add('GET', '/api/v1/tasks/:id', 'bearer', (req, res) => {
-    res.json(readTask(db, (req.user as UserRow).id, req.params.id));
-  });
 
-  router.add('GET', '/api/v1/comments', 'bearer', (req, res) => {
-    const user = req.user as UserRow;
-    const taskId = req.query.get('task_id') ?? undefined;
-    const projectId = req.query.get('project_id') ?? undefined;
-    if (!taskId && !projectId) throw ApiFailure.badRequest('Ask for the comments of a task or a project.', 'INVALID_ARGUMENT');
-    res.json(listComments(db, user.id, { taskId, projectId }, req.query.get('cursor') ?? undefined));
-  });
+
 
   router.add('POST', '/api/v1/comments/:id/reactions', 'bearer', (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -267,7 +236,7 @@ export function createApp(options: AppOptions): App {
   const ctxFor = (req: Request): Ctx => makeCtx(db, req.user as UserRow);
 
   function queryOf(req: Request) {
-    return Object.fromEntries(req.query.entries()) as Parameters<typeof completedByDate>[2];
+    return Object.fromEntries(req.query.entries()) as Parameters<typeof completedTasks>[2];
   }
 
   async function receiveUpload(raw: IncomingMessage, owner: UserRow, stillSignedIn: () => boolean): Promise<StoredFile> {

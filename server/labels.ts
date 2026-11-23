@@ -28,7 +28,7 @@ function activeLabelNamed(db: Db, userId: string, name: string, exceptId?: strin
 }
 
 /** Puts a new name on every task the person can see that carries the old one. */
-function renameOnItems(ctx: Ctx, from: string, to: string | null): void {
+export function renameOnItems(ctx: Ctx, from: string, to: string | null): void {
   const { db, viewer } = ctx;
   // Only tasks in projects this person may change: a read-only project keeps its labels whatever the owner of a tag renames.
   // Label names match without regard to case, as label names are unique without it. SQLite lowercases only ASCII, so the comparison is made here.

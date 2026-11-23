@@ -2,7 +2,7 @@ import { ApiFailure, type Db } from './db';
 import type { UserRow } from './auth';
 import { type Args, type Ctx, id as idArg, makeCtx, resolveId, text } from './ctx';
 import { ITEM_COMMANDS } from './items';
-import { addProject, archiveProject, deleteProject, moveProjectToPersonal, moveProjectToWorkspace, reorderProjects, updateProject, addSection, updateSection, archiveSection, moveSection, deleteSection } from './projects';
+import { addProject, archiveProject, deleteProject, moveProjectToPersonal, moveProjectToWorkspace, reorderProjects, unarchiveProject, updateProject, addSection, updateSection, archiveSection, moveSection, deleteSection } from './projects';
 import { shareProject, removeFromProject, changeRole } from './sharing';
 import { LABEL_COMMANDS } from './labels';
 import { NOTE_COMMANDS } from './notes';
@@ -43,6 +43,7 @@ const HANDLERS: Record<string, Handler> = {
   project_reorder: (ctx, args) => reorderProjects(ctx, args),
   project_move: (ctx, args) => updateProject(ctx, { id: args.id, parent_id: args.parent_id ?? null }),
   project_archive: (ctx, args) => archiveProject(ctx, resolveId(ctx, idArg(args, 'id', true))),
+  project_unarchive: (ctx, args) => unarchiveProject(ctx, resolveId(ctx, idArg(args, 'id', true))),
   project_move_to_workspace: (ctx, args) => moveProjectToWorkspace(ctx, resolveId(ctx, idArg(args, 'project_id', true)), resolveId(ctx, idArg(args, 'workspace_id', true))),
   project_move_to_personal: (ctx, args) => moveProjectToPersonal(ctx, resolveId(ctx, idArg(args, 'project_id', true))),
   project_delete: (ctx, args) => deleteProject(ctx, resolveId(ctx, idArg(args, 'id', true))),
@@ -131,6 +132,19 @@ export function runCommands(db: Db, viewer: UserRow, commands: CommandInput[], n
     }
   }
   return { sync_status, temp_id_mapping: Object.fromEntries(ctx.temps) };
+}
+
+/**
+ * One command for a REST call: the same handler a sync command runs, in its own transaction, with no answer kept
+ * for a retry (a REST call is not retried by the sync engine). Returns the temporary ids it made, so a caller can
+ * read the object it created.
+ */
+export function applyDirect(db: Db, viewer: UserRow, type: string, args: Args, tempId?: string, now = new Date()): Map<string, string> {
+  const handler = HANDLERS[type];
+  if (!handler) throw ApiFailure.badRequest(`The server does not know the command “${type}”.`, 'UNKNOWN_COMMAND');
+  const ctx = makeCtx(db, viewer, now);
+  db.transaction(() => handler(ctx, args, tempId))();
+  return ctx.temps;
 }
 
 export const MAX_COMMANDS = 500;

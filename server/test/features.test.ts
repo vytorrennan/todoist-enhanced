@@ -109,7 +109,7 @@ describe('saved filters', () => {
       command('item_add', { content: 'Cold', project_id: who.inbox, priority: 1 }),
     ]);
     const page = await as(who).get(`/api/v1/tasks/filter?query=${encodeURIComponent('p1 & !@later')}`);
-    expect(page.body.results).toEqual([{ id: hot.real(21) }]);
+    expect(page.body.results.map((task: { id: string }) => task.id)).toEqual([hot.real(21)]);
     const filters = (await as(who).sync({})).body.filters;
     expect(filters.map((f: { name: string }) => f.name)).toEqual(['Urgent']);
     await run(who, [command('filter_update', { id: real(20), query: 'today' })]);
@@ -372,7 +372,7 @@ describe('history', () => {
     await run(owner, [command('item_complete', { id: real(60) })]);
     const mine = await as(owner).get(`/api/v1/tasks/completed/by_completion_date${EVERYTHING}`);
     expect(mine.body.items.map((i: { content: string }) => i.content)).toEqual(['Finished']);
-    expect(mine.body.items[0]).toMatchObject({ id: real(60), task_id: real(60), labels: [], duration: null });
+    expect(mine.body.items[0]).toMatchObject({ id: real(60), labels: [], duration: null, checked: true });
     const theirs = await as(other).get(`/api/v1/tasks/completed/by_completion_date${EVERYTHING}`);
     expect(theirs.body.items).toEqual([]);
   });
