@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Api, command, person, startServer, type Person, type TestServer, tempId } from './harness';
+import { keyBetween } from '../../src/domain/orderKey';
 
 /** Regressions for the findings of the council review: each one fails without its fix. */
 
@@ -493,6 +494,97 @@ describe('the fifth review', () => {
     await run(owner, [command('item_delete', { id: made.real(161) })]);
     const next = await as(member).sync({ types: ['reminders'], token: afterRemoval.body.sync_token as string });
     expect(next.body.reminders).not.toContainEqual(expect.objectContaining({ id: set.body.id }));
+  });
+});
+
+/** The sixth review: each test fails without the fix it names. */
+describe('the sixth review', () => {
+  const share = (project: string, who: Person, role = 'READ_WRITE') =>
+    command('share_project', { project_id: project, email: who.email, role });
+  const itemsOf = async (who: Person) => (await as(who).sync({ types: ['items'] })).body.items as Array<{ id: string; order_key: string | null }>;
+
+  it('a task dragged to a new place keeps its new order key', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const made = await run(owner, [
+      command('item_add', { content: 'First', project_id: inbox }, { temp_id: tempId(170) }),
+      command('item_add', { content: 'Second', project_id: inbox }, { temp_id: tempId(171) }),
+    ]);
+    const first = (await itemsOf(owner)).find((item) => item.id === made.real(170));
+    const dropped = keyBetween(null, first?.order_key ?? null);
+    const moved = await run(owner, [command('item_update', { id: made.real(171), order_key: dropped })]);
+    expect(moved.statuses).toEqual(['ok']);
+    expect((await itemsOf(owner)).find((item) => item.id === made.real(171))?.order_key).toBe(dropped);
+  });
+
+  it('a task added after one was moved to the end goes after it', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const made = await run(owner, [
+      command('item_add', { content: 'First', project_id: inbox }, { temp_id: tempId(172) }),
+      command('item_add', { content: 'Second', project_id: inbox }, { temp_id: tempId(173) }),
+    ]);
+    const secondKey = (await itemsOf(owner)).find((item) => item.id === made.real(173))?.order_key as string;
+    const movedKey = keyBetween(secondKey, null);
+    await run(owner, [command('item_update', { id: made.real(172), order_key: movedKey })]);
+    const added = await run(owner, [command('item_add', { content: 'Third', project_id: inbox }, { temp_id: tempId(174) })]);
+    expect(added.statuses).toEqual(['ok']);
+    const thirdKey = (await itemsOf(owner)).find((item) => item.id === added.real(174))?.order_key ?? '';
+    expect(thirdKey > movedKey).toBe(true);
+  });
+
+  it('a workspace guest cannot take a project out of its folder', async () => {
+    const owner = await person(base);
+    const guest = await person(base);
+    const made = await run(owner, [
+      command('workspace_add', { name: 'Unfile hall' }, { temp_id: tempId(180) }),
+      command('folder_add', { name: 'Filed here', workspace_id: tempId(180) }, { temp_id: tempId(181) }),
+      command('project_add', { name: 'Stays filed' }, { temp_id: tempId(182) }),
+      command('project_move_to_workspace', { project_id: tempId(182), workspace_id: tempId(180) }),
+      command('project_update', { id: tempId(182), folder_id: tempId(181) }),
+    ]);
+    await run(owner, [command('workspace_invite', { workspace_id: made.real(180), email: guest.email, role: 'GUEST' })]);
+    await acceptFirst(guest);
+    await run(owner, [share(made.real(182), guest, 'ADMIN')]);
+    await acceptFirst(guest);
+    const unfiled = await run(guest, [command('project_update', { id: made.real(182), folder_id: null })]);
+    expect(unfiled.statuses[0]).toMatchObject({ error_tag: 'WORKSPACE_ROLE_TOO_LOW' });
+    const projects = (await as(owner).sync({ types: ['projects'] })).body.projects as Array<{ id: string; folder_id: string | null }>;
+    expect(projects.find((project) => project.id === made.real(182))?.folder_id).toBe(made.real(181));
+  });
+
+  it('a project order that names null, a fraction, or keys for some projects only, is refused', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const made = await run(owner, [
+      command('project_add', { name: 'Ordered once' }, { temp_id: tempId(190) }),
+      command('section_add', { name: 'Sized', project_id: tempId(190) }, { temp_id: tempId(191) }),
+    ]);
+    const nulled = await run(owner, [command('project_reorder', { projects: [{ id: made.real(190), child_order: null }] })]);
+    expect(nulled.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const huge = await run(owner, [command('project_update', { id: made.real(190), child_order: 1e300 })]);
+    expect(huge.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const fraction = await run(owner, [command('section_update', { id: made.real(191), section_order: 1.5 })]);
+    expect(fraction.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const mixed = await run(owner, [command('project_reorder', { projects: [{ id: made.real(190), order_key: 'a1V' }, { id: inbox, child_order: 1 }] })]);
+    expect(mixed.statuses[0]).toMatchObject({ error_tag: 'MIXED_ORDER_KEYS' });
+  });
+
+  it('projects reordered by number alone show in that order', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Alpha' }, { temp_id: tempId(200) }),
+      command('project_add', { name: 'Beta' }, { temp_id: tempId(201) }),
+    ]);
+    const alpha = made.real(200);
+    const beta = made.real(201);
+    const reordered = await run(owner, [command('project_reorder', { projects: [{ id: beta, child_order: 1 }, { id: alpha, child_order: 2 }] })]);
+    expect(reordered.statuses).toEqual(['ok']);
+    const projects = (await as(owner).sync({ types: ['projects'] })).body.projects as Array<{ id: string; order_key: string | null }>;
+    const shown = projects
+      .filter((project) => project.id === alpha || project.id === beta)
+      .sort((a, b) => ((a.order_key ?? '') < (b.order_key ?? '') ? -1 : 1));
+    expect(shown.map((project) => project.id)).toEqual([beta, alpha]);
   });
 });
 

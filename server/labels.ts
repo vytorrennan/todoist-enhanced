@@ -1,5 +1,5 @@
 import { ApiFailure, type Db, newId, nextSeq } from './db';
-import { type Args, type Ctx, endOfList, id as idArg, orderKeyArg, renumber, resolveId, text, truthy } from './ctx';
+import { type Args, type Ctx, endOfList, id as idArg, orderKeyArg, orderNumberArg, renumber, resolveId, text, truthy } from './ctx';
 import { checkFilterQuery, runFilter } from './filterQuery';
 import { parseLabels } from './serialize';
 
@@ -137,7 +137,7 @@ export function addFilter(ctx: Ctx, args: Args, tempId?: string): void {
   db.prepare(`INSERT INTO filters (id, user_id, name, query, description, color, item_order, order_key, is_favorite, is_deleted, seq)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`).run(
     id, viewer.id, name, query, text(args, 'description', { max: 2000 }) ?? '', cleanColor(args.color) ?? 'charcoal',
-    typeof args.item_order === 'number' ? args.item_order : end.order, orderKeyArg(args.order_key) ?? end.key,
+    orderNumberArg(args, 'item_order') ?? end.order, orderKeyArg(args.order_key) ?? end.key,
     truthy(args.is_favorite) ? 1 : 0, nextSeq(db),
   );
 }
@@ -154,7 +154,8 @@ export function updateFilter(ctx: Ctx, args: Args): void {
   if ('description' in args) set.description = text(args, 'description', { max: 2000 }) ?? '';
   if ('color' in args) set.color = cleanColor(args.color) ?? filter.color;
   if ('is_favorite' in args) set.is_favorite = truthy(args.is_favorite) ? 1 : 0;
-  if ('item_order' in args && typeof args.item_order === 'number') set.item_order = args.item_order;
+  const itemOrder = orderNumberArg(args, 'item_order');
+  if (itemOrder !== undefined) set.item_order = itemOrder;
   // A filter moved in the list gets a new key between its neighbours; the key is kept, not ignored.
   const filterOrderKey = orderKeyArg(args.order_key);
   if (filterOrderKey !== undefined) set.order_key = filterOrderKey;

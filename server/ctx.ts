@@ -82,14 +82,27 @@ export function orderKeyArg(value: unknown): string | undefined {
   return value;
 }
 
+/** An order number a client gives under `key`: absent or null is nothing; anything else must be a whole number. */
+export function orderNumberArg(args: Args, key: string): number | undefined {
+  const value = args[key];
+  if (value === undefined || value === null) return undefined;
+  const number = wholeNumber(value);
+  if (number === undefined) throw ApiFailure.badRequest(`“${key}” must be a whole number.`, 'INVALID_ARGUMENT');
+  return number;
+}
+
 export const truthy = (value: unknown): boolean => value === true || value === 1 || value === 'true';
 
-/** Sibling ordering: a key that sorts after the last sibling, so a new row goes to the end. */
+/**
+ * Sibling ordering: a key that sorts after the last sibling, so a new row goes to the end. The last sibling
+ * is the one with the greatest key, because the keys are what the lists sort by; the number is one past the greatest.
+ */
 export function endOfList(db: Db, table: string, where: string, params: unknown[], keyColumn = 'order_key', orderColumn = 'child_order') {
-  const last = db.prepare(`SELECT ${keyColumn} AS key, ${orderColumn} AS num FROM ${table} WHERE ${where}
-      ORDER BY ${orderColumn} DESC, ${keyColumn} DESC LIMIT 1`).get(...params) as { key: string | null; num: number } | undefined;
+  const top = db.prepare(`SELECT MAX(${orderColumn}) AS num FROM ${table} WHERE ${where}`).get(...params) as { num: number | null } | undefined;
+  const last = db.prepare(`SELECT ${keyColumn} AS key FROM ${table} WHERE ${where}
+      ORDER BY ${keyColumn} DESC, ${orderColumn} DESC LIMIT 1`).get(...params) as { key: string | null } | undefined;
   return {
-    order: (last?.num ?? 0) + 1,
+    order: (top?.num ?? 0) + 1,
     key: keyBetween(last?.key ?? null, null),
   };
 }

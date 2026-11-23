@@ -1,9 +1,10 @@
 import { ApiFailure, type Db, newId, nextSeq, nowIso } from './db';
 import { canBeAssigned, requireProject, requireWorkspace, workspaceRole } from './access';
-import { type Args, type Ctx, endOfList, id as idArg, integer, orderKeyArg, resolveId, text, truthy, wholeNumber } from './ctx';
+import { type Args, type Ctx, endOfList, id as idArg, orderKeyArg, orderNumberArg, resolveId, text, truthy, wholeNumber } from './ctx';
 import { requireFullSync, requireFullSyncFor, revokeWorkspaceGrants, setMembership } from './sharing';
 import { collaboratorOut, type ProjectRow, sectionOut } from './serialize';
 import { subtreeIds as itemSubtree } from './items';
+import { keysInOrder } from '../src/domain/orderKey';
 
 /** Projects, their nesting and archiving, and sections inside them. */
 
@@ -148,7 +149,7 @@ export function addProject(ctx: Ctx, args: Args, tempId?: string): void {
   const place = sidebarEnd(db, viewer.id, parentId);
   db.prepare(`INSERT INTO project_members (project_id, user_id, role, state, is_favorite, child_order, order_key, joined_at, seq)
     VALUES (?, ?, 'CREATOR', 'active', ?, ?, ?, ?, ?)`).run(
-    id, viewer.id, truthy(args.is_favorite) ? 1 : 0, typeof args.child_order === 'number' ? args.child_order : place.child_order,
+    id, viewer.id, truthy(args.is_favorite) ? 1 : 0, orderNumberArg(args, 'child_order') ?? place.child_order,
     orderKeyArg(args.order_key) ?? place.order_key, ctx.now, nextSeq(db),
   );
   if (workspaceId && visibility === 'team') admitWorkspaceMembers(db, id, workspaceId);
@@ -186,6 +187,11 @@ export function updateProject(ctx: Ctx, args: Args): void {
     if (folder && (db.prepare('SELECT parent_id FROM projects WHERE id = ?').get(id) as { parent_id: string | null }).parent_id) {
       requireProject(db, id, viewer.id, 'owner');
     }
+    // The folders are the workspace's: a member or an admin takes a project out of one, as well as filing it.
+    if (!folder && project.workspace_id) {
+      const role = workspaceRole(db, project.workspace_id, viewer.id);
+      if (!role || role === 'GUEST') throw ApiFailure.forbidden('Guests do not arrange the folders of a workspace.', 'WORKSPACE_ROLE_TOO_LOW');
+    }
     if (folder) {
       const row = db.prepare('SELECT workspace_id FROM folders WHERE id = ? AND is_deleted = 0').get(folder) as { workspace_id: string } | undefined;
       // The folder must be in this project's workspace, and the person must be in that workspace to file the project in it.
@@ -202,7 +208,7 @@ export function updateProject(ctx: Ctx, args: Args): void {
   const own: Record<string, unknown> = {};
   if ('is_favorite' in args) own.is_favorite = truthy(args.is_favorite) ? 1 : 0;
   if ('collapsed' in args || 'is_collapsed' in args) own.collapsed = truthy(args.collapsed ?? args.is_collapsed) ? 1 : 0;
-  if ('child_order' in args) own.child_order = integer(args, 'child_order') ?? membership.child_order;
+  if ('child_order' in args) own.child_order = orderNumberArg(args, 'child_order') ?? membership.child_order;
   const ownOrderKey = orderKeyArg(args.order_key);
   if (ownOrderKey !== undefined) own.order_key = ownOrderKey;
   const ownKeys = Object.keys(own);
@@ -241,21 +247,44 @@ function moveProject(ctx: Ctx, id: string, parentArg: unknown): void {
     .run(place.child_order, place.order_key, nextSeq(db), id, viewer.id);
 }
 
+/**
+ * Numbers a person's projects under one parent 1, 2, 3 in the order they now have, with keys that agree with the
+ * numbers, so the two sorts give the same order.
+ */
+function renumberProjects(db: Db, userId: string, parentId: string | null): void {
+  const rows = db.prepare(`SELECT m.project_id FROM project_members m JOIN projects p ON p.id = m.project_id
+    WHERE m.user_id = ? AND m.state = 'active' AND p.is_deleted = 0 AND p.parent_id IS ?
+    ORDER BY m.child_order, m.project_id`).all(userId, parentId) as Array<{ project_id: string }>;
+  const keys = keysInOrder(rows.length);
+  rows.forEach((row, index) => {
+    db.prepare('UPDATE project_members SET child_order = ?, order_key = ?, seq = ? WHERE project_id = ? AND user_id = ?')
+      .run(index + 1, keys[index], nextSeq(db), row.project_id, userId);
+  });
+}
+
 export function reorderProjects(ctx: Ctx, args: Args): void {
   const { db, viewer } = ctx;
   const entries = Array.isArray(args.projects) ? args.projects as Array<{ id?: unknown; child_order?: unknown; order_key?: unknown }> : [];
-  for (const entry of entries) {
+  // A reorder names a key for every project it moves, or for none: a mix would sort some by key and others by number.
+  const keys = entries.map((entry) => (entry && typeof entry === 'object' ? orderKeyArg(entry.order_key) : undefined));
+  if (keys.some((key) => key !== undefined) && keys.some((key) => key === undefined)) {
+    throw ApiFailure.badRequest('Name an order key for every project in the order, or for none.', 'MIXED_ORDER_KEYS');
+  }
+  const parents = new Set<string | null>();
+  entries.forEach((entry, index) => {
     if (!entry || typeof entry !== 'object') throw ApiFailure.badRequest('Each project order names a project.', 'INVALID_ARGUMENT');
     const id = resolveId(ctx, entry.id);
     const membership = requireProject(db, id, viewer.id, 'read');
-    const childOrder = wholeNumber(entry.child_order ?? membership.child_order);
+    // An omitted child order keeps the place; an explicit one, null included, must be a whole number.
+    const childOrder = 'child_order' in entry ? wholeNumber(entry.child_order) : membership.child_order;
     if (childOrder === undefined) throw ApiFailure.badRequest('A child order is a whole number.', 'INVALID_ARGUMENT');
     db.prepare('UPDATE project_members SET child_order = ?, order_key = ?, seq = ? WHERE project_id = ? AND user_id = ?').run(
-      childOrder,
-      orderKeyArg(entry.order_key) ?? membership.order_key,
-      nextSeq(db), id, viewer.id,
+      childOrder, keys[index] ?? membership.order_key, nextSeq(db), id, viewer.id,
     );
-  }
+    parents.add((db.prepare('SELECT parent_id FROM projects WHERE id = ?').get(id) as { parent_id: string | null }).parent_id);
+  });
+  // Without keys the numbers are the order: each affected group gets fresh numbers and keys that agree.
+  if (keys.every((key) => key === undefined)) for (const parent of parents) renumberProjects(db, viewer.id, parent);
 }
 
 /** Archives a project and everything under it. The inbox cannot be archived. */
@@ -316,7 +345,7 @@ export function addSection(ctx: Ctx, args: Args, tempId?: string): void {
   db.prepare(`INSERT INTO sections (id, project_id, name, description, section_order, order_key, created_by, created_at, seq)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     id, projectId, name, text(args, 'description', { max: 20_000 }) ?? '',
-    integer(args, 'section_order') ?? end.order, orderKeyArg(args.order_key) ?? end.key,
+    orderNumberArg(args, 'section_order') ?? end.order, orderKeyArg(args.order_key) ?? end.key,
     viewer.id, ctx.now, nextSeq(db),
   );
 }
@@ -336,7 +365,7 @@ export function updateSection(ctx: Ctx, args: Args): void {
   if ('description' in args) set.description = text(args, 'description', { max: 20_000 }) ?? '';
   if ('section_order' in args) {
     // A null order keeps the section where it is: every section has one.
-    const order = integer(args, 'section_order');
+    const order = orderNumberArg(args, 'section_order');
     if (order !== undefined) set.section_order = order;
   }
   const sectionOrderKey = orderKeyArg(args.order_key);

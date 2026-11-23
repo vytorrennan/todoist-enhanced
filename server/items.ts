@@ -1,7 +1,7 @@
 import { ApiFailure, type Db, newId, nextSeq } from './db';
 import { activeMembership, canBeAssigned, requireProject, visibleSql } from './access';
 import { requireFullSyncFor } from './sharing';
-import { type Args, type Ctx, endOfList, id as idArg, integer, orderKeyArg, renumber, resolveId, text, truthy, wholeNumber } from './ctx';
+import { type Args, type Ctx, endOfList, id as idArg, orderKeyArg, orderNumberArg, renumber, resolveId, text, truthy, wholeNumber } from './ctx';
 import { advanceRecurring, resolveDue, type StoredDue } from './recurrence';
 import { isDay } from './dates';
 import { type ItemRow } from './serialize';
@@ -117,7 +117,7 @@ function placement(ctx: Ctx, args: Args, projectId: string, sectionId: string | 
   const where = 'project_id = ? AND is_deleted = 0 AND section_id IS ? AND parent_id IS ?';
   const params = [projectId, sectionId, parentId];
   const end = endOfList(ctx.db, 'items', where, params);
-  const given = integer(args, 'child_order');
+  const given = orderNumberArg(args, 'child_order');
   return {
     child_order: given ?? end.order,
     order_key: orderKeyArg(args.order_key) ?? end.key,
@@ -209,7 +209,10 @@ export function updateItem(ctx: Ctx, args: Args): void {
   if ('labels' in args) set.labels = JSON.stringify(cleanLabels(args.labels));
   if ('responsible_uid' in args) set.responsible_uid = assertAssignee(ctx, row.project_id, args.responsible_uid);
   if ('collapsed' in args || 'is_collapsed' in args) set.collapsed = truthy(args.collapsed ?? args.is_collapsed) ? 1 : 0;
-  if ('day_order' in args) set.day_order = integer(args, 'day_order') ?? -1;
+  if ('day_order' in args) set.day_order = orderNumberArg(args, 'day_order') ?? -1;
+  // A task dragged to a new place carries its new key. It is stored, so the place sticks.
+  const orderKey = orderKeyArg(args.order_key);
+  if (orderKey !== undefined) set.order_key = orderKey;
   const keys = Object.keys(set);
   if (keys.length === 0) return;
   const assignments = keys.map((key) => `${key} = @${key}`).join(', ');
