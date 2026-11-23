@@ -18,7 +18,7 @@ import { copyText, isTemporaryId, taskLink } from '@/api/links';
 import { ROW_PRESS_EVENT, type RowMenu } from '@/domain/gestures';
 import { useStore } from '@/store/store';
 import { useConfirm } from './overlays/Confirm';
-import { canStoreDurations, effectiveEstimate } from '@/domain/estimates';
+import { effectiveEstimate } from '@/domain/estimates';
 import { DurationChooser } from './DurationField';
 import { DatePicker, taskShortcuts, type RecurrenceReading } from './DatePicker';
 import { nextOccurrence, nextOccurrenceLabel } from '@/domain/nextOccurrence';
@@ -172,8 +172,6 @@ export function TaskActions({ item, childrenOf, onOpen, onKeep, contextOnly = fa
   const setRecurrence = useStore((s) => s.setRecurrence);
   const toast = useStore((s) => s.toast);
   const demo = useStore((s) => s.demo);
-  const user = useStore((s) => s.snapshot.user);
-  const deadlineLocked = !demo && !item.deadline && !canStoreDurations(user);
   const dateFormat = useStore((s) => s.prefs.dateFormat);
   const hour12 = useStore((s) => s.prefs.hour12);
   const [menu, setMenu] = useState<'none' | 'schedule' | 'more' | 'estimate' | 'move' | 'priority' | 'deadline'>('none');
@@ -520,9 +518,9 @@ export function TaskActions({ item, childrenOf, onOpen, onKeep, contextOnly = fa
       </div>}
       {menu === 'deadline' && <div className={`popover rowmenu schedulemenu${phone ? ' asSheet' : placement.className}`} role="menu" ref={placement.ref}>
         {back}
-        {deadlineLocked ? <div className="deadline-pro-notice"><p>{t('deadline.proRequired')}</p></div> : <DatePicker value={item.deadline?.date ?? ''} label={t('detail.deadline')} onEscape={() => setMenu('none')} onPick={(date) => {
+        <DatePicker value={item.deadline?.date ?? ''} label={t('detail.deadline')} onEscape={() => setMenu('none')} onPick={(date) => {
           setMenu('none'); void updateTask(item.id, { deadline: date ? { date: date.slice(0, 10), lang: locale } : null });
-        }} />}
+        }} />
       </div>}
 
       {menu === 'estimate' && estimateSheet}

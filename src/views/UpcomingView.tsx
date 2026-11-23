@@ -140,7 +140,8 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
     const periods = new Map<string, { id: string; title: string; items: typeof scoped; dropTarget?: { kind: 'day'; date: Date }; capacityMinutes?: number | null }>();
     for (const day of days) {
       const start = group === 'day' ? day : group === 'week' ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
-      const id = toApiDate(start);
+      // A week or a month has an id of its own: its first day can be today, which the Today column already uses as its id.
+      const id = group === 'day' ? toApiDate(start) : `${group}:${toApiDate(start)}`;
       let title = formatDayHeading(start, locale);
       if (group === 'week') {
         const weeks = differenceInCalendarWeeks(start, today, { weekStartsOn: 1 });
@@ -230,9 +231,9 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
         />
       ) : (
         <div className="mode">
-          {columns.map((column, index) => (
+          {columns.map((column) => (
             <TaskGroup
-              key={`${index}:${column.id}`}
+              key={column.id}
               keepWhenEmpty
               title={column.title}
               items={column.items}

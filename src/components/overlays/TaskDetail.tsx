@@ -1131,7 +1131,6 @@ export function TaskDetail({ taskId, onClose, onOpen }: TaskDetailProps) {
           <div className="prop" data-prop="deadline">
             <PropLabel name={t('detail.deadline')} prop="deadline" />
             <DateField
-              premiumDeadline
               value={deadline ? toApiDate(deadline) : ''}
               label={t('detail.deadline')}
               /* The property's name is not drawn on a phone, where it is a chip:

@@ -638,7 +638,6 @@ export const en = {
   'detail.project': 'Project',
   'detail.section': 'Section',
   'detail.startDate': 'Start date',
-  "deadline.proRequired": "Deadlines are available on every account.",
   "deadline.proLabel": "Included",
   'detail.deadline': 'Deadline',
   'detail.priority': 'Priority',

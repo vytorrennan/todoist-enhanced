@@ -32,7 +32,7 @@ test('the project picker keeps all colours visible', async ({ demo: page }) => {
   await page.screenshot({ path: 'test-results/project-picker-476.png' });
 });
 
-test('the deadline explanation from the usual composer button says every account has deadlines', async ({ demo: page }) => {
+test('a non-premium account sets a deadline from the usual composer button, with no plan lock', async ({ demo: page }) => {
   test.skip(process.env.PLAYWRIGHT_DEV !== '1', 'Uses the development store fixture');
   await page.route('**/api/v1/**', (route) => route.fulfill({ json: route.request().url().includes('/sync') ? { sync_token: 'test', full_sync: false } : { results: [], items: [], next_cursor: null } }));
   await page.evaluate(() => {
@@ -44,8 +44,7 @@ test('the deadline explanation from the usual composer button says every account
   await page.locator('.sidebar').getByRole('button', { name: 'Add task', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Deadline' }).click();
-  const notice = page.locator('.deadline-pro-notice');
-  // Enhanced has no plans: every account has deadlines, so there is no link to a price page.
-  await expect(notice).toContainText('Deadlines are available on every account.');
-  await expect(notice.getByRole('link')).toHaveCount(0);
+  // Every account has deadlines: the date picker opens, and no plan notice stands in its place.
+  await expect(page.locator('.deadline-pro-notice')).toHaveCount(0);
+  await expect(page.locator('.datepicker').first()).toBeVisible();
 });

@@ -640,7 +640,6 @@ export const fr: Record<TranslationKey, string> = {
   'detail.project': 'Projet',
   'detail.section': 'Section',
   'detail.startDate': 'Date de début',
-  "deadline.proRequired": "Les échéances sont disponibles sur tous les comptes.",
   "deadline.proLabel": "Inclus",
   'detail.deadline': 'Échéance',
   'detail.priority': 'Priorité',
