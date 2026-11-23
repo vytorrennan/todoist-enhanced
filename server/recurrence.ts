@@ -59,8 +59,9 @@ const folded = (text: string): string => text.normalize('NFD').replace(/[\u0300-
 const wordsOf = (text: string): string[] => folded(text).split(/[^a-z0-9]+/).filter(Boolean);
 
 const DAY_WORDS: Record<string, number> = {
-  sunday: 0, dimanche: 0, monday: 1, lundi: 1, tuesday: 2, mardi: 2, wednesday: 3, mercredi: 3,
-  thursday: 4, jeudi: 4, friday: 5, vendredi: 5, saturday: 6, samedi: 6,
+  sunday: 0, sun: 0, dimanche: 0, dim: 0, monday: 1, mon: 1, lundi: 1, lun: 1, tuesday: 2, tue: 2, mardi: 2, mar: 2,
+  wednesday: 3, wed: 3, mercredi: 3, mer: 3, thursday: 4, thu: 4, thur: 4, jeudi: 4, jeu: 4, friday: 5, fri: 5,
+  vendredi: 5, ven: 5, saturday: 6, sat: 6, samedi: 6, sam: 6,
 };
 const ORDINAL_WORDS: Record<string, number | 'last'> = {
   first: 1, second: 2, third: 3, fourth: 4, last: 'last', '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 'last',
@@ -115,6 +116,17 @@ function yearlyAnchor(text: string, today: string): string | null {
   return null;
 }
 
+const isWorkday = (weekday: number): boolean => weekday !== 0 && weekday !== 6;
+
+/** The workdays from `from` up to, not including, `to`. Each block of seven days holds five. */
+function workdaysBetween(from: string, to: string): number {
+  const span = dayNumber(to) - dayNumber(from);
+  const start = weekdayOf(from);
+  let count = Math.floor(span / 7) * 5;
+  for (let step = 0; step < span % 7; step += 1) if (isWorkday((start + step) % 7)) count += 1;
+  return count;
+}
+
 /** Whether a day is one a rule falls on, counting from `anchor`. */
 export function occursOn(rule: RepeatRule, anchor: string, day: string, named: NthWeekday | null = null): boolean {
   if (day < anchor) return false;
@@ -125,7 +137,8 @@ export function occursOn(rule: RepeatRule, anchor: string, day: string, named: N
       return span % interval === 0;
     case 'workday': {
       const weekday = weekdayOf(day);
-      return weekday !== 0 && weekday !== 6;
+      if (weekday === 0 || weekday === 6) return false;
+      return workdaysBetween(anchor, day) % interval === 0;
     }
     case 'week': {
       const weekdays = rule.weekdays.length ? rule.weekdays : [weekdayOf(anchor)];
@@ -196,9 +209,18 @@ export function advanceRecurring(due: StoredDue, today: string): StoredDue | nul
   // Completion counts from the day it happened; a plain rule from the later of the due day and today.
   const anchor = rule.fromCompletion ? today : dueDay;
   const base = rule.fromCompletion ? today : laterDay(dueDay, today);
-  const next = nextOccurrence(rule, anchor, addDays(base, 1), nthWeekdayOf(due.string ?? ''));
+  const named = rule.unit === 'month' && rule.monthly === 'day' ? /\b(\d{1,2})(?:st|nd|rd|th|er|e)\b/i.exec(due.string ?? '')?.[1] : undefined;
+  const next = named
+    ? nextOnOrdinal(rule, Number(named), addDays(base, 1))
+    : nextOccurrence(rule, anchor, addDays(base, 1), nthWeekdayOf(due.string ?? ''));
   if (!next) return null;
   return { ...due, date: withTime(next, rule.time ?? timePart(due.date)) };
+}
+
+/** A due date is a day, and one with a time must have a real time after it. */
+function checkDueDate(value: string): void {
+  const timed = value.length > 10 && !/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d/.test(value);
+  if (!isDay(dayPart(value)) || timed) throw ApiFailure.badRequest(`“${value}” is not a date.`, 'INVALID_DATE');
 }
 
 /**
@@ -220,11 +242,12 @@ export function resolveDue(input: DueInput | null | undefined, today: string): S
     const rule = parseRule(string);
     let day: string;
     if (date) {
-      if (!isDay(dayPart(date))) throw ApiFailure.badRequest(`“${date}” is not a date.`, 'INVALID_DATE');
+      checkDueDate(date);
       day = dayPart(date);
     } else {
       // The start is written "starting …" in English and "à partir du …" in French, as the picker writes it.
       const starting = /(?:starting|from|partir (?:du|de)) (\d{4}-\d{2}-\d{2})/i.exec(string)?.[1];
+      if (starting !== undefined && !isDay(starting)) throw ApiFailure.badRequest(`“${starting}” is not a date.`, 'INVALID_DATE');
       // "every 15th" names its day of the month, which the rule itself does not keep: the first date is the next 15th.
       const ordinal = rule.unit === 'month' && rule.monthly === 'day' ? /\b(\d{1,2})(?:st|nd|rd|th|er|e)\b/i.exec(string)?.[1] : undefined;
       const named = rule.unit === 'year' && !starting ? yearlyAnchor(string, today) : null;
@@ -238,7 +261,7 @@ export function resolveDue(input: DueInput | null | undefined, today: string): S
   }
 
   if (!date) throw ApiFailure.badRequest('A task needs a date to be scheduled on.', 'INVALID_DATE');
-  if (!isDay(dayPart(date))) throw ApiFailure.badRequest(`“${date}” is not a date.`, 'INVALID_DATE');
+  checkDueDate(date);
   const string = typeof input.string === 'string' && input.string.trim() ? input.string.trim() : dayPart(date);
   return { date, string, lang, timezone, recurring: false };
 }

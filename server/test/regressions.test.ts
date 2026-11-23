@@ -113,18 +113,65 @@ describe('review: files, invitations and sessions', () => {
 });
 
 describe('review: permissions and visibility', () => {
-  it('archiving a project refuses when a subproject belongs to someone the person cannot administer', async () => {
+  it('only the owner nests projects, and only the owner moves them, so a collaborator cannot leave a branch the owner cannot manage', async () => {
     const owner = await person(base);
     const helper = await person(base);
-    const { real } = await run(owner, [command('project_add', { name: 'Parent' }, { temp_id: tempId(10) })]);
+    const { real } = await run(owner, [command('project_add', { name: 'Parent' }, { temp_id: tempId(10) }), command('project_add', { name: 'Other' }, { temp_id: tempId(12) })]);
     await run(owner, [command('share_project', { project_id: real(10), email: helper.email, role: 'READ_WRITE' })]);
     await acceptFirst(helper);
-    const child = await run(helper, [command('project_add', { name: 'Helper’s child', parent_id: real(10) }, { temp_id: tempId(11) })]);
-    const childId = child.real(11);
+    const nested = await run(helper, [command('project_add', { name: 'Helper’s child', parent_id: real(10) }, { temp_id: tempId(11) })]);
+    expect(nested.statuses[0]).not.toBe('ok');
+    const moved = await run(helper, [command('project_move', { id: real(10), parent_id: real(12) })]);
+    expect(moved.statuses[0]).not.toBe('ok');
+    const parentView = (await as(owner).sync({})).body.projects.find((p: { id: string }) => p.id === real(10));
+    expect(parentView?.parent_id ?? null).toBeNull();
+    // The owner can still manage the whole of their project.
     const archive = await run(owner, [command('project_archive', { id: real(10) })]);
-    expect(archive.statuses[0]).toMatchObject({ error_tag: 'PROJECT_NOT_FOUND' });
-    const helperView = await as(helper).sync({});
-    expect(helperView.body.projects.find((p: { id: string }) => p.id === childId)?.is_archived).toBe(false);
+    expect(archive.statuses[0]).toBe('ok');
+  });
+
+  it('a task moved to a project where its assignee cannot change tasks loses the assignee, subtasks included', async () => {
+    const owner = await person(base);
+    const reader = await person(base);
+    const { real } = await run(owner, [command('project_add', { name: 'Here' }, { temp_id: tempId(80) }), command('project_add', { name: 'There' }, { temp_id: tempId(81) })]);
+    await run(owner, [command('share_project', { project_id: real(80), email: reader.email, role: 'READ_WRITE' })]);
+    await acceptFirst(reader);
+    await run(owner, [command('share_project', { project_id: real(81), email: reader.email, role: 'READ_ONLY' })]);
+    await acceptFirst(reader);
+    const made = await run(owner, [
+      command('item_add', { content: 'Handed over', project_id: real(80), responsible_uid: reader.id }, { temp_id: tempId(82) }),
+      command('item_add', { content: 'Its step', project_id: real(80), parent_id: tempId(82), responsible_uid: reader.id }, { temp_id: tempId(83) }),
+    ]);
+    expect(made.statuses).toEqual(['ok', 'ok']);
+    await run(owner, [command('item_move', { id: made.real(82), project_id: real(81) })]);
+    const items = (await as(owner).sync({})).body.items as Array<{ id: string; responsible_uid: string | null }>;
+    expect(items.find((item) => item.id === made.real(82))?.responsible_uid).toBeNull();
+    expect(items.find((item) => item.id === made.real(83))?.responsible_uid).toBeNull();
+  });
+
+  it('an invitation sent by someone who has since lost the right to invite does not grant access', async () => {
+    const owner = await person(base);
+    const admin = await person(base);
+    const invitee = await person(base);
+    const { real } = await run(owner, [command('project_add', { name: 'Guarded' }, { temp_id: tempId(90) })]);
+    await run(owner, [command('share_project', { project_id: real(90), email: admin.email, role: 'ADMIN' })]);
+    await acceptFirst(admin);
+    await run(admin, [command('share_project', { project_id: real(90), email: invitee.email, role: 'ADMIN' })]);
+    await run(owner, [command('delete_collaborator', { project_id: real(90), email: admin.email })]);
+    await acceptFirst(invitee);
+    const granted = (await as(invitee).sync({})).body.projects.find((p: { id: string }) => p.id === real(90));
+    expect(granted).toBeUndefined();
+  });
+
+  it('an upload that is not a multipart form is refused, and so is a malformed address in the static path', async () => {
+    const who = await person(base);
+    const upload = await fetch(`${server.base}/api/v1/uploads`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${who.token}`, 'content-type': 'application/json' },
+      body: '{"file_name":"x"}',
+    });
+    expect(upload.status).toBe(400);
+    expect(((await upload.json()) as { error_tag: string }).error_tag).toBe('INVALID_ARGUMENT');
   });
 
   it('a restricted project in a workspace is not given to the team, and a public one is refused', async () => {

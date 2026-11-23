@@ -195,4 +195,16 @@ describe('sync reads', () => {
     const res = await fetch(`${server.base}/api/v1/auth/me`, { method: 'POST', headers: { authorization: `Bearer ${who.token}`, 'content-type': 'application/json' }, body: '{nope' });
     expect(res.status).toBe(400);
   });
+
+  it('counts sign-in attempts that run at the same time, so a burst of wrong passwords still locks the address', async () => {
+    await api.post('/api/v1/auth/register', { email: 'burst@example.com', password: 'long enough' });
+    const replies = await Promise.all(Array.from({ length: 15 }, () => api.post('/api/v1/auth/login', { email: 'burst@example.com', password: 'wrong wrong' })));
+    expect(replies.filter((reply) => reply.status === 401).length).toBeLessThanOrEqual(10);
+    expect(replies.some((reply) => reply.status === 429)).toBe(true);
+  });
+
+  it('a damaged file cookie is ignored at sign-out rather than an error', async () => {
+    const damaged = await fetch(`${server.base}/api/v1/auth/logout`, { method: 'POST', headers: { cookie: 'tde_session=%E0' } });
+    expect(damaged.status).toBeLessThan(500);
+  });
 });

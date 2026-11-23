@@ -141,6 +141,27 @@ describe('repeat rules', () => {
     expect(advanceRecurring({ date: '2026-01-29', string: 'every 29 jan', lang: 'en', timezone: null, recurring: true }, '2026-01-29')?.date.slice(0, 10)).toBe('2027-01-29');
   });
 
+  it('an abbreviated weekday in a monthly rule is read: "every last mon" from a last Monday of February', () => {
+    expect(advanceRecurring({ date: '2026-02-23', string: 'every last mon', lang: 'en', timezone: null, recurring: true }, '2026-02-23')?.date.slice(0, 10)).toBe('2026-03-30');
+  });
+
+  it('"every 3 workdays" counts workdays, so a Friday moves on to the Wednesday three workdays later', () => {
+    expect(advanceRecurring({ date: '2026-11-20', string: 'every 3 workdays', lang: 'en', timezone: null, recurring: true }, '2026-11-20')?.date.slice(0, 10)).toBe('2026-11-25');
+  });
+
+  it('"every 15th" keeps its day when it advances from a task moved to the 20th', () => {
+    expect(advanceRecurring({ date: '2026-12-20', string: 'every 15th', lang: 'en', timezone: null, recurring: true }, '2026-12-20')?.date.slice(0, 10)).toBe('2027-01-15');
+  });
+
+  it('a start date that is not a day is refused, not a server error', () => {
+    expect(() => resolveDue({ string: 'every day starting 2026-99-99', lang: 'en', is_recurring: true }, '2026-11-23')).toThrow(ApiFailure);
+  });
+
+  it('a due with a time must have a real time after its day', () => {
+    expect(() => resolveDue({ date: '2026-11-23T99:99', lang: 'en', is_recurring: false }, '2026-11-23')).toThrow(ApiFailure);
+    expect(resolveDue({ date: '2026-11-23T09:30', lang: 'en', is_recurring: false }, '2026-11-23')?.date).toBe('2026-11-23T09:30');
+  });
+
   it('refuses a rule it cannot read, with a reason the app can show', () => {
     expect(() => parseRule('whenever it feels right')).toThrow(ApiFailure);
     try {

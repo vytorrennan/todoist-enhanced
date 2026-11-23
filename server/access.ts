@@ -43,6 +43,13 @@ export function activeMembership(db: Db, projectId: string, userId: string): Mem
  * cannot see the project at all, and forbidden when they can see it but the
  * role is too low.
  */
+/** Whether a task in this project can be given to this person: an active member who may change it. */
+export function canBeAssigned(db: Db, projectId: string, userId: string): boolean {
+  const row = db.prepare(`SELECT role FROM project_members WHERE project_id = ? AND user_id = ? AND state = 'active'`)
+    .get(projectId, userId) as { role: string } | undefined;
+  return row !== undefined && row.role !== 'READ_ONLY';
+}
+
 export function requireProject(db: Db, projectId: string, userId: string, need: Need): MembershipRow {
   const project = db.prepare('SELECT is_deleted FROM projects WHERE id = ?').get(projectId) as { is_deleted: number } | undefined;
   const membership = activeMembership(db, projectId, userId);

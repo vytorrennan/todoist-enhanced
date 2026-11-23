@@ -166,7 +166,13 @@ export function resetBudgets(): void {
 export function serveStatic(root: string, urlPath: string, res: Response, method: string): boolean {
   if (method !== 'GET' && method !== 'HEAD') return false;
   const base = resolve(root);
-  const requested = normalize(decodeURIComponent(urlPath)).replace(/^[/\\]+/, '');
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(urlPath);
+  } catch {
+    return false;
+  }
+  const requested = normalize(decoded).replace(/^[/\\]+/, '');
   let file = resolve(base, requested);
   if (file !== base && !file.startsWith(base + sep)) return false;
   if (!existsSync(file) || statSync(file).isDirectory()) {

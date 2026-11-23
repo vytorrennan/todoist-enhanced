@@ -1,5 +1,5 @@
 import { ApiFailure, type Db, newId, nextSeq } from './db';
-import { activeMembership, requireProject } from './access';
+import { activeMembership, canBeAssigned, requireProject } from './access';
 import { requireFullSyncFor } from './sharing';
 import { type Args, type Ctx, endOfList, id as idArg, integer, renumber, resolveId, text, truthy } from './ctx';
 import { advanceRecurring, resolveDue, type StoredDue } from './recurrence';
@@ -130,8 +130,8 @@ export function addItem(ctx: Ctx, args: Args, tempId?: string): void {
   let projectId = idArg(args, 'project_id') ?? viewer.inbox_project_id;
   let parent: string | null = null;
   if (parentArg) {
-    const parentRow = db.prepare('SELECT project_id FROM items WHERE id = ?').get(resolveId(ctx, parentArg)) as { project_id: string } | undefined;
-    if (!parentRow) throw ApiFailure.badRequest('The parent task does not exist.', 'PARENT_NOT_IN_PROJECT');
+    // A parent the person cannot see answers like one that does not exist: nothing about it is revealed.
+    const parentRow = loadItem(ctx, resolveId(ctx, parentArg));
     projectId = parentRow.project_id;
     parent = checkParent(ctx, projectId, parentArg);
   }
@@ -305,7 +305,12 @@ export function moveItem(ctx: Ctx, args: Args): void {
   if (parentId && !parent) throw ApiFailure.badRequest('The parent task does not exist.', 'PARENT_NOT_IN_PROJECT');
   if (parentId && subtreeIds(db, row.id).includes(parentId)) throw ApiFailure.badRequest('A task cannot be moved under itself.', 'CYCLE');
 
-  const targetProject = resolveId(ctx, idArg(args, 'project_id') ?? parent?.project_id ?? row.project_id);
+  // A section names its project, so a task sent to a section of another project needs no project as well.
+  const sectionGiven = typeof args.section_id === 'string' && args.section_id ? resolveId(ctx, args.section_id) : null;
+  const sectionProject = sectionGiven
+    ? (db.prepare('SELECT project_id FROM sections WHERE id = ? AND is_deleted = 0').get(sectionGiven) as { project_id: string } | undefined)?.project_id
+    : undefined;
+  const targetProject = resolveId(ctx, idArg(args, 'project_id') ?? sectionProject ?? parent?.project_id ?? row.project_id);
   requireProject(db, targetProject, ctx.viewer.id, 'write');
   const projectChanged = targetProject !== row.project_id;
   let section: string | null;
@@ -317,8 +322,8 @@ export function moveItem(ctx: Ctx, args: Args): void {
   const finalParent = parentGiven ? parentId : parent ? parentId : null;
 
   const place = placement(ctx, { child_order: undefined }, targetProject, section, finalParent);
-  const responsible = projectChanged && row.responsible_uid
-    ? (activeMembership(db, targetProject, row.responsible_uid) ? row.responsible_uid : null)
+  const responsible = projectChanged && row.responsible_uid && !canBeAssigned(db, targetProject, row.responsible_uid)
+    ? null
     : row.responsible_uid;
   db.prepare(`UPDATE items SET project_id = ?, section_id = ?, parent_id = ?, child_order = ?, order_key = ?,
       responsible_uid = ?, updated_at = ?, seq = ? WHERE id = ?`).run(
@@ -327,8 +332,10 @@ export function moveItem(ctx: Ctx, args: Args): void {
   if (projectChanged) {
     // Subtasks come along with their parent.
     for (const id of subtreeIds(db, row.id).filter((item) => item !== row.id)) {
-      db.prepare('UPDATE items SET project_id = ?, section_id = ?, seq = ? WHERE id = ?')
-        .run(targetProject, section, nextSeq(db), id);
+      const sub = db.prepare('SELECT responsible_uid FROM items WHERE id = ?').get(id) as { responsible_uid: string | null };
+      const keep = sub.responsible_uid && !canBeAssigned(db, targetProject, sub.responsible_uid) ? null : sub.responsible_uid;
+      db.prepare('UPDATE items SET project_id = ?, section_id = ?, responsible_uid = ?, seq = ? WHERE id = ?')
+        .run(targetProject, section, keep, nextSeq(db), id);
     }
     requireFullSyncFor(db, [row.project_id, targetProject]);
   }

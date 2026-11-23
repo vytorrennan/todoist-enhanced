@@ -228,4 +228,22 @@ describe('tasks: deleting, moving and ordering', () => {
     const theirs = await openTasks(stranger);
     expect(theirs.find((i) => i.id === real(70))?.content).toBe('Theirs');
   });
+
+  it('a task sent into a section of another project lands in it, and keeps its subtasks with it', async () => {
+    const who = await person(base);
+    const { real } = await run(who, [
+      command('project_add', { name: 'Source' }, { temp_id: tempId(60) }),
+      command('project_add', { name: 'Target' }, { temp_id: tempId(61) }),
+      command('section_add', { name: 'Doing', project_id: tempId(61) }, { temp_id: tempId(62) }),
+      command('item_add', { content: 'Moving', project_id: tempId(60) }, { temp_id: tempId(63) }),
+      command('item_add', { content: 'Its step', project_id: tempId(60), parent_id: tempId(63) }, { temp_id: tempId(64) }),
+    ]);
+    const moved = await run(who, [command('item_move', { id: real(63), section_id: real(62) })]);
+    expect(Object.values(moved.reply.body.sync_status)).toEqual(['ok']);
+    const items = await openTasks(who);
+    const task = items.find((item) => item.id === real(63));
+    const step = items.find((item) => item.id === real(64));
+    expect(task).toMatchObject({ project_id: real(61), section_id: real(62) });
+    expect(step).toMatchObject({ project_id: real(61) });
+  });
 });

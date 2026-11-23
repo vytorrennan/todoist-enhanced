@@ -95,7 +95,8 @@ export async function registerUser(
   const now = nowIso();
   const timezone = cleanTimezone(input.timezone) ?? 'UTC';
   const lang = input.lang === 'fr' ? 'fr' : 'en';
-  return db.transaction(() => {
+  try {
+    return db.transaction(() => {
     const inboxId = newId();
     db.prepare(`INSERT INTO users (id, email, full_name, password_hash, inbox_project_id, timezone, lang, created_at, seq)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -105,7 +106,14 @@ export async function registerUser(
     db.prepare(`INSERT INTO project_members (project_id, user_id, role, joined_at, seq)
       VALUES (?, ?, 'CREATOR', ?, ?)`).run(inboxId, id, now, nextSeq(db));
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
-  })();
+    })();
+  } catch (error) {
+    // Two registrations for one address can both pass the check above: the one that lands second is refused the same way.
+    if ((error as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      throw ApiFailure.conflict('An account already uses that email address.', 'EMAIL_TAKEN');
+    }
+    throw error;
+  }
 }
 
 /** Checks an email and password. Null when either is wrong: the reason is never said. */

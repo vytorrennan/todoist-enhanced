@@ -1,5 +1,5 @@
 import { ApiFailure, type Db, newId, nextSeq, nowIso } from './db';
-import { requireProject, requireWorkspace } from './access';
+import { canBeAssigned, requireProject, requireWorkspace } from './access';
 import { type Args, type Ctx, endOfList, id as idArg, integer, resolveId, text, truthy } from './ctx';
 import { requireFullSync, requireFullSyncFor, revokeWorkspaceGrants, setMembership } from './sharing';
 import { collaboratorOut, type ProjectRow, sectionOut } from './serialize';
@@ -112,9 +112,17 @@ export function addProject(ctx: Ctx, args: Args, tempId?: string): void {
   const color = cleanColor(args.color) ?? 'charcoal';
   const parentArg = idArg(args, 'parent_id');
   const parentId = parentArg ? resolveId(ctx, parentArg) : null;
-  if (parentId) requireProject(db, parentId, viewer.id, 'write');
+  // Only the owner of a project nests projects under it, so the owner can always manage the whole branch.
+  let parentWorkspace: string | null = null;
+  if (parentId) {
+    requireProject(db, parentId, viewer.id, 'owner');
+    const parent = db.prepare('SELECT workspace_id, is_inbox FROM projects WHERE id = ?').get(parentId) as { workspace_id: string | null; is_inbox: number };
+    if (parent.is_inbox) throw ApiFailure.badRequest('The Inbox cannot hold projects.', 'INBOX');
+    parentWorkspace = parent.workspace_id;
+  }
   const workspaceArg = idArg(args, 'workspace_id');
-  const workspaceId = workspaceArg ? resolveId(ctx, workspaceArg) : null;
+  // A subproject lives in its parent's space unless it is named another.
+  const workspaceId = workspaceArg ? resolveId(ctx, workspaceArg) : parentWorkspace;
   let folderId: string | null = null;
   if (workspaceId) {
     const role = requireWorkspace(db, workspaceId, viewer.id);
@@ -126,10 +134,7 @@ export function addProject(ctx: Ctx, args: Args, tempId?: string): void {
       folderId = resolveId(ctx, folder);
     }
   }
-  if (parentId && workspaceId) {
-    const parent = db.prepare('SELECT workspace_id FROM projects WHERE id = ?').get(parentId) as { workspace_id: string | null };
-    if (parent.workspace_id !== workspaceId) throw ApiFailure.badRequest('A project nests in a project of the same workspace.', 'PARENT_IN_OTHER_WORKSPACE');
-  }
+  if (parentId && parentWorkspace !== workspaceId) throw ApiFailure.badRequest('A project nests in a project of the same workspace.', 'PARENT_IN_OTHER_WORKSPACE');
   const id = newId();
   if (tempId) ctx.temps.set(tempId, id);
   const visibility = visibilityOf((args.access as { visibility?: unknown } | undefined)?.visibility, workspaceId ? 'team' : 'restricted');
@@ -199,11 +204,16 @@ export function updateProject(ctx: Ctx, args: Args): void {
 
 function moveProject(ctx: Ctx, id: string, parentArg: unknown): void {
   const { db, viewer } = ctx;
-  requireProject(db, id, viewer.id, 'write');
+  // Where a project sits is shared by everyone who sees it, so only its owner moves it, and the whole branch must be the owner's.
+  requireProject(db, id, viewer.id, 'owner');
   const parentId = parentArg ? resolveId(ctx, parentArg) : null;
   if (parentId) {
-    requireProject(db, parentId, viewer.id, 'write');
+    requireProject(db, parentId, viewer.id, 'owner');
     if (projectTree(db, id).includes(parentId)) throw ApiFailure.badRequest('A project cannot be moved under itself.', 'CYCLE');
+    for (const member of projectTree(db, id)) requireProject(db, member, viewer.id, 'owner');
+    if ((db.prepare('SELECT is_inbox FROM projects WHERE id = ?').get(parentId) as { is_inbox: number }).is_inbox) {
+      throw ApiFailure.badRequest('The Inbox cannot hold projects.', 'INBOX');
+    }
   }
   const project = db.prepare('SELECT workspace_id FROM projects WHERE id = ?').get(id) as { workspace_id: string | null };
   if (parentId) {
@@ -321,7 +331,9 @@ export function moveSection(ctx: Ctx, args: Args): void {
   const tasks = db.prepare('SELECT id FROM items WHERE section_id = ? AND parent_id IS NULL').all(section.id) as Array<{ id: string }>;
   for (const task of tasks) {
     for (const id of itemSubtree(db, task.id)) {
-      db.prepare('UPDATE items SET project_id = ?, seq = ? WHERE id = ?').run(target, nextSeq(db), id);
+      const row = db.prepare('SELECT responsible_uid FROM items WHERE id = ?').get(id) as { responsible_uid: string | null };
+      const keep = row.responsible_uid && !canBeAssigned(db, target, row.responsible_uid) ? null : row.responsible_uid;
+      db.prepare('UPDATE items SET project_id = ?, responsible_uid = ?, seq = ? WHERE id = ?').run(target, keep, nextSeq(db), id);
     }
   }
 }

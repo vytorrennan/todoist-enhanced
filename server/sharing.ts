@@ -181,6 +181,10 @@ export function answerInvitation(ctx: Ctx, invitationId: string, secret: string,
     if (accept) {
       const project = db.prepare('SELECT is_deleted FROM projects WHERE id = ?').get(invitation.project_id) as { is_deleted: number } | undefined;
       if (!project || project.is_deleted) throw ApiFailure.notFound('That project no longer exists.', 'PROJECT_NOT_FOUND');
+      // The invitation counts only while the person who sent it can still invite to the project.
+      const sender = (db.prepare(`SELECT role FROM project_members WHERE project_id = ? AND user_id = ? AND state = 'active'`)
+        .get(invitation.project_id, invitation.invited_by) as { role: string } | undefined)?.role;
+      if (sender !== 'CREATOR' && sender !== 'ADMIN') throw ApiFailure.forbidden('The person who sent this invitation can no longer invite to the project.', 'INVITER_CANNOT_INVITE');
       const pending = db.prepare(`SELECT role FROM project_members WHERE project_id = ? AND user_id = ? AND state = 'invited'`)
         .get(invitation.project_id, viewer.id) as { role: string } | undefined;
       setMembership(db, invitation.project_id, viewer.id, { role: pending?.role ?? invitation.role, state: 'active', via: 'direct' });
@@ -199,7 +203,12 @@ export function answerInvitation(ctx: Ctx, invitationId: string, secret: string,
   }
 
   if (invitation.kind === 'workspace' && invitation.workspace_id) {
-    if (accept) joinWorkspace(db, invitation.workspace_id, viewer.id, invitation.role);
+    if (accept) {
+      const sender = (db.prepare('SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?')
+        .get(invitation.workspace_id, invitation.invited_by) as { role: string } | undefined)?.role;
+      if (sender !== 'ADMIN') throw ApiFailure.forbidden('The person who sent this invitation can no longer invite to the workspace.', 'INVITER_CANNOT_INVITE');
+      joinWorkspace(db, invitation.workspace_id, viewer.id, invitation.role);
+    }
     notify(db, invitation.invited_by, 'workspace_invitation_created', {
       from_uid: viewer.id,
       from_user: { full_name: viewer.full_name, email: viewer.email },

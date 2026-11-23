@@ -48,7 +48,13 @@ function cookieValue(header: string | undefined, name: string): string | null {
   if (!header) return null;
   for (const part of header.split(';')) {
     const [key, ...rest] = part.trim().split('=');
-    if (key === name) return decodeURIComponent(rest.join('='));
+    if (key === name) {
+      try {
+        return decodeURIComponent(rest.join('='));
+      } catch {
+        return null;
+      }
+    }
   }
   return null;
 }
@@ -110,11 +116,10 @@ export function createApp(options: AppOptions): App {
       res.header('Retry-After', String(wait));
       throw new ApiFailure(429, 'Too many attempts. Wait a few minutes and try again.', 'TOO_MANY_ATTEMPTS', 429);
     }
+    // Counted before the check, which takes time: attempts made meanwhile must count too.
+    recordLoginAttempt(key);
     const user = await checkLogin(db, email, password);
-    if (!user) {
-      recordLoginAttempt(key);
-      throw new ApiFailure(401, 'That email and password do not match an account.', 'INVALID_CREDENTIALS');
-    }
+    if (!user) throw new ApiFailure(401, 'That email and password do not match an account.', 'INVALID_CREDENTIALS');
     clearLoginAttempts(key);
     res.status(200).json(signedIn(user, req, res));
   });
@@ -240,6 +245,9 @@ export function createApp(options: AppOptions): App {
   });
 
   router.add('POST', '/api/v1/uploads', 'bearer', async (req, res) => {
+    if (!String(req.raw.headers['content-type'] ?? '').includes('multipart/form-data')) {
+      throw ApiFailure.badRequest('Send the file as a multipart form.', 'INVALID_ARGUMENT');
+    }
     const file = await receiveUpload(req.raw, req.user as UserRow, () => userForToken(db, req.bearer) !== null);
     res.status(201).json(file);
   });
