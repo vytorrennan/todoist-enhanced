@@ -246,4 +246,21 @@ describe('tasks: deleting, moving and ordering', () => {
     expect(task).toMatchObject({ project_id: real(61), section_id: real(62) });
     expect(step).toMatchObject({ project_id: real(61) });
   });
+
+  it('a subtask follows its parent into the parent\'s section, and keeps that section when the section moves', async () => {
+    const who = await person(base);
+    const { real } = await run(who, [
+      command('project_add', { name: 'Board' }, { temp_id: tempId(100) }),
+      command('project_add', { name: 'Elsewhere' }, { temp_id: tempId(101) }),
+      command('section_add', { name: 'First', project_id: tempId(100) }, { temp_id: tempId(102) }),
+      command('section_add', { name: 'Second', project_id: tempId(100) }, { temp_id: tempId(103) }),
+      command('item_add', { content: 'Parent', project_id: tempId(100), section_id: tempId(102) }, { temp_id: tempId(104) }),
+      command('item_add', { content: 'Child', project_id: tempId(100), parent_id: tempId(104) }, { temp_id: tempId(105) }),
+    ]);
+    await run(who, [command('item_move', { id: real(104), section_id: real(103) })]);
+    await run(who, [command('section_move', { id: real(103), project_id: real(101) })]);
+    const items = await openTasks(who);
+    expect(items.find((item) => item.id === real(104))).toMatchObject({ project_id: real(101), section_id: real(103) });
+    expect(items.find((item) => item.id === real(105))).toMatchObject({ project_id: real(101), section_id: real(103) });
+  });
 });

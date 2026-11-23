@@ -333,7 +333,9 @@ export function moveSection(ctx: Ctx, args: Args): void {
     for (const id of itemSubtree(db, task.id)) {
       const row = db.prepare('SELECT responsible_uid FROM items WHERE id = ?').get(id) as { responsible_uid: string | null };
       const keep = row.responsible_uid && !canBeAssigned(db, target, row.responsible_uid) ? null : row.responsible_uid;
-      db.prepare('UPDATE items SET project_id = ?, responsible_uid = ?, seq = ? WHERE id = ?').run(target, keep, nextSeq(db), id);
+      // Everything under a task of the section is in the section too, whatever it was before.
+      db.prepare('UPDATE items SET project_id = ?, section_id = ?, responsible_uid = ?, seq = ? WHERE id = ?')
+        .run(target, section.id, keep, nextSeq(db), id);
     }
   }
 }

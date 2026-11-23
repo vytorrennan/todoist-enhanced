@@ -329,16 +329,14 @@ export function moveItem(ctx: Ctx, args: Args): void {
       responsible_uid = ?, updated_at = ?, seq = ? WHERE id = ?`).run(
     targetProject, section, finalParent, place.child_order, place.order_key, responsible, ctx.now, nextSeq(db), row.id,
   );
-  if (projectChanged) {
-    // Subtasks come along with their parent.
-    for (const id of subtreeIds(db, row.id).filter((item) => item !== row.id)) {
-      const sub = db.prepare('SELECT responsible_uid FROM items WHERE id = ?').get(id) as { responsible_uid: string | null };
-      const keep = sub.responsible_uid && !canBeAssigned(db, targetProject, sub.responsible_uid) ? null : sub.responsible_uid;
-      db.prepare('UPDATE items SET project_id = ?, section_id = ?, responsible_uid = ?, seq = ? WHERE id = ?')
-        .run(targetProject, section, keep, nextSeq(db), id);
-    }
-    requireFullSyncFor(db, [row.project_id, targetProject]);
+  // Subtasks go with their parent into its project and section, whenever the parent moves to another section or project.
+  for (const id of subtreeIds(db, row.id).filter((item) => item !== row.id)) {
+    const sub = db.prepare('SELECT responsible_uid FROM items WHERE id = ?').get(id) as { responsible_uid: string | null };
+    const keep = projectChanged && sub.responsible_uid && !canBeAssigned(db, targetProject, sub.responsible_uid) ? null : sub.responsible_uid;
+    db.prepare('UPDATE items SET project_id = ?, section_id = ?, responsible_uid = ?, seq = ? WHERE id = ?')
+      .run(targetProject, section, keep, nextSeq(db), id);
   }
+  if (projectChanged) requireFullSyncFor(db, [row.project_id, targetProject]);
 }
 
 export function reorderItems(ctx: Ctx, args: Args): void {

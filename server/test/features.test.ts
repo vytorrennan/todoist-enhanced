@@ -222,6 +222,14 @@ describe('comments', () => {
     expect(neither.status).toBe(400);
   });
 
+  it('a saved filter moved in the list keeps its new order key', async () => {
+    const who = await person(base);
+    const { real } = await run(who, [command('filter_add', { name: 'Moves', query: 'today' }, { temp_id: tempId(110) })]);
+    await run(who, [command('filter_update', { id: real(110), order_key: 'zz-moved' })]);
+    const filters = (await as(who).sync({})).body.filters as Array<{ id: string; order_key: string }>;
+    expect(filters.find((filter) => filter.id === real(110))?.order_key).toBe('zz-moved');
+  });
+
   it('reactions are added once, counted by person, and removed again', async () => {
     const owner = await person(base);
     const reactor = await person(base);

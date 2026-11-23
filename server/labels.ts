@@ -154,6 +154,10 @@ export function updateFilter(ctx: Ctx, args: Args): void {
   if ('color' in args) set.color = cleanColor(args.color) ?? filter.color;
   if ('is_favorite' in args) set.is_favorite = truthy(args.is_favorite) ? 1 : 0;
   if ('item_order' in args && typeof args.item_order === 'number') set.item_order = args.item_order;
+  // A filter moved in the list gets a new key between its neighbours; the key is kept, not ignored.
+  if ('order_key' in args && typeof args.order_key === 'string' && args.order_key.length > 0 && args.order_key.length <= 64) {
+    set.order_key = args.order_key;
+  }
   const keys = Object.keys(set);
   if (keys.length) {
     ctx.db.prepare(`UPDATE filters SET ${keys.map((key) => `${key} = @${key}`).join(', ')}, seq = @seq WHERE id = @id`)
