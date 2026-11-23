@@ -180,6 +180,10 @@ export function updateProject(ctx: Ctx, args: Args): void {
   if ('folder_id' in args) {
     requireProject(db, id, viewer.id, 'admin');
     const folder = args.folder_id ? resolveId(ctx, args.folder_id) : null;
+    // A folder takes a project out of its parent, which changes the shared tree: only the owner of a subproject does that.
+    if (folder && (db.prepare('SELECT parent_id FROM projects WHERE id = ?').get(id) as { parent_id: string | null }).parent_id) {
+      requireProject(db, id, viewer.id, 'owner');
+    }
     if (folder) {
       const row = db.prepare('SELECT workspace_id FROM folders WHERE id = ? AND is_deleted = 0').get(folder) as { workspace_id: string } | undefined;
       if (!row || row.workspace_id !== project.workspace_id) throw ApiFailure.badRequest('That folder is not in this project’s workspace.', 'FOLDER_NOT_IN_WORKSPACE');
@@ -208,6 +212,8 @@ function moveProject(ctx: Ctx, id: string, parentArg: unknown): void {
   requireProject(db, id, viewer.id, 'owner');
   const parentId = parentArg ? resolveId(ctx, parentArg) : null;
   if (parentId) {
+    const self = db.prepare('SELECT is_inbox FROM projects WHERE id = ?').get(id) as { is_inbox: number };
+    if (self.is_inbox) throw ApiFailure.badRequest('The Inbox stays where it is.', 'INBOX');
     requireProject(db, parentId, viewer.id, 'owner');
     if (projectTree(db, id).includes(parentId)) throw ApiFailure.badRequest('A project cannot be moved under itself.', 'CYCLE');
     for (const member of projectTree(db, id)) requireProject(db, member, viewer.id, 'owner');
@@ -278,7 +284,8 @@ export function deleteProject(ctx: Ctx, id: string): void {
     db.prepare('UPDATE projects SET is_deleted = 1, seq = ? WHERE id = ? AND is_deleted = 0').run(nextSeq(db), projectId);
     db.prepare('UPDATE items SET is_deleted = 1, seq = ? WHERE project_id = ? AND is_deleted = 0').run(nextSeq(db), projectId);
     db.prepare('UPDATE sections SET is_deleted = 1, seq = ? WHERE project_id = ? AND is_deleted = 0').run(nextSeq(db), projectId);
-    db.prepare('UPDATE notes SET is_deleted = 1, seq = ? WHERE project_id = ? AND is_deleted = 0').run(nextSeq(db), projectId);
+    db.prepare(`UPDATE notes SET is_deleted = 1, seq = ? WHERE is_deleted = 0 AND (project_id = ? OR item_id IN (SELECT id FROM items WHERE project_id = ?))`)
+      .run(nextSeq(db), projectId, projectId);
   }
 }
 

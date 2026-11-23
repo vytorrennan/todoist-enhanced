@@ -417,23 +417,18 @@ export function registerRest(router: Router, db: Db): void {
     const viewer = viewerOf(req);
     const task = req.query.get('task_id');
     const project = req.query.get('project_id');
-    const { cursor, limit } = pageOf(req);
     if (!task && !project) throw ApiFailure.badRequest('Name the task or the project whose comments you want.', 'INVALID_ARGUMENT');
-    const ctx = makeCtx(db, viewer);
-    const rows = task
-      ? db.prepare('SELECT * FROM notes WHERE item_id = ? AND is_deleted = 0 ORDER BY posted_at LIMIT ? OFFSET ?').all(task, limit, cursor)
-      : project
-        ? db.prepare('SELECT * FROM notes WHERE project_id = ? AND item_id IS NULL AND is_deleted = 0 ORDER BY posted_at LIMIT ? OFFSET ?').all(project, limit, cursor)
-        : [];
-    const visible = (rows as NoteRow[]).filter((row) => {
-      try {
-        loadNote(ctx, row.id, 'read');
-        return true;
-      } catch {
-        return false;
-      }
+    // The task or project must be one the person can see; only then is its comment list read, a page at a time.
+    if (task) itemRow(db, viewer.id, task);
+    else projectRow(db, viewer.id, project ?? '');
+    const { cursor, limit } = pageOf(req);
+    const rows = (task
+      ? db.prepare('SELECT * FROM notes WHERE item_id = ? AND is_deleted = 0 ORDER BY posted_at, id LIMIT ? OFFSET ?').all(task, limit + 1, cursor)
+      : db.prepare('SELECT * FROM notes WHERE project_id = ? AND item_id IS NULL AND is_deleted = 0 ORDER BY posted_at, id LIMIT ? OFFSET ?').all(project, limit + 1, cursor)) as NoteRow[];
+    res.json({
+      results: rows.slice(0, limit).map((row) => commentShape(db, row)),
+      next_cursor: rows.length > limit ? String(cursor + limit) : null,
     });
-    res.json({ results: visible.map((row) => commentShape(db, row)), next_cursor: null });
   });
 
   router.add('POST', '/api/v1/comments', 'bearer', (req, res) => {
@@ -443,7 +438,7 @@ export function registerRest(router: Router, db: Db): void {
     const args: Args = { content: body.content };
     if (typeof body.task_id === 'string') args.item_id = body.task_id;
     if (typeof body.project_id === 'string') args.project_id = body.project_id;
-    if (body.attachment) args.attachment = body.attachment;
+    if (body.attachment ?? body.file_attachment) args.file_attachment = body.attachment ?? body.file_attachment;
     const temps = applyDirect(db, viewer, 'note_add', args, temp);
     res.json(commentOutFor(viewer, db, temps.get(temp) ?? ''));
   });
@@ -467,7 +462,8 @@ export function registerRest(router: Router, db: Db): void {
 
   router.add('GET', '/api/v1/activities', 'bearer', (req, res) => {
     const cursor = req.query.get('cursor');
-    const limit = Math.min(Number(req.query.get('limit') ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, MAX_LIMIT);
+    if (cursor !== null && !/^\d{1,15}$/.test(cursor)) throw ApiFailure.badRequest('That cursor is not one this server gave.', 'INVALID_ARGUMENT');
+    const { limit } = pageOf(req);
     res.json(listActivity(db, viewerOf(req), {
       object_type: req.query.get('object_type'),
       object_id: req.query.get('object_id'),
@@ -475,7 +471,7 @@ export function registerRest(router: Router, db: Db): void {
       parent_project_id: req.query.get('parent_project_id'),
       parent_item_id: req.query.get('parent_item_id'),
       initiator_id: req.query.get('initiator_id'),
-    }, cursor ? Number(cursor) : Number.MAX_SAFE_INTEGER, limit));
+    }, cursor !== null ? Number(cursor) : Number.MAX_SAFE_INTEGER, limit));
   });
 
   /* Reminders --------------------------------------------------------- */
@@ -685,16 +681,16 @@ export function registerRest(router: Router, db: Db): void {
     const viewer = viewerOf(req);
     const temp = `rest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const temps = applyDirect(db, viewer, 'folder_add', { ...bodyOf(req) }, temp);
-    res.json(folderOutFor(db, temps.get(temp) ?? ''));
+    res.json(folderOutFor(db, viewerOf(req), temps.get(temp) ?? ''));
   });
 
   router.add('GET', '/api/v1/folders/:id', 'bearer', (req, res) => {
-    res.json(folderOutFor(db, req.params.id));
+    res.json(folderOutFor(db, viewerOf(req), req.params.id));
   });
 
   router.add('POST', '/api/v1/folders/:id', 'bearer', (req, res) => {
     applyDirect(db, viewerOf(req), 'folder_update', { ...bodyOf(req), id: req.params.id });
-    res.json(folderOutFor(db, req.params.id));
+    res.json(folderOutFor(db, viewerOf(req), req.params.id));
   });
 
   router.add('DELETE', '/api/v1/folders/:id', 'bearer', (req, res) => {
@@ -751,8 +747,11 @@ function commentOutFor(viewer: UserRow, db: Db, id: string) {
   return commentShape(db, row);
 }
 
-function folderOutFor(db: Db, id: string) {
-  const row = db.prepare('SELECT * FROM folders WHERE id = ? AND is_deleted = 0').get(id) as Parameters<typeof folderShape>[0] | undefined;
+/** A folder, if its workspace is one the person is in; otherwise the answer is the same as for a folder that does not exist. */
+function folderOutFor(db: Db, viewer: UserRow, id: string) {
+  const row = db.prepare(`SELECT f.* FROM folders f WHERE f.id = @id AND f.is_deleted = 0
+    AND f.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = @viewer)`)
+    .get({ id, viewer: viewer.id }) as Parameters<typeof folderShape>[0] | undefined;
   if (!row) throw ApiFailure.notFound('That folder does not exist.', 'FOLDER_NOT_FOUND');
   return folderShape(row);
 }

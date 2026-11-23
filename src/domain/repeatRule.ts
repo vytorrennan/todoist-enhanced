@@ -201,7 +201,7 @@ export function ruleFromString(raw: string): RepeatRule | null {
     let hour = Number(time[1]);
     if (time[3] === 'pm' && hour < 12) hour += 12;
     if (time[3] === 'am' && hour === 12) hour = 0;
-    if (hour > 23) return null;
+    if (hour > 23 || Number(time[2] ?? 0) > 59) return null;
     rule.time = `${pad(hour)}:${time[2] ?? '00'}`;
     text = text.replace(TIME, '');
   }

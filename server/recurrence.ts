@@ -219,8 +219,8 @@ export function advanceRecurring(due: StoredDue, today: string): StoredDue | nul
 
 /** A due date is a day, and one with a time must have a real time after it. */
 function checkDueDate(value: string): void {
-  const timed = value.length > 10 && !/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d/.test(value);
-  if (!isDay(dayPart(value)) || timed) throw ApiFailure.badRequest(`“${value}” is not a date.`, 'INVALID_DATE');
+  const shape = /^\d{4}-\d{2}-\d{2}(T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+  if (!shape.test(value) || !isDay(dayPart(value))) throw ApiFailure.badRequest(`“${value}” is not a date.`, 'INVALID_DATE');
 }
 
 /**

@@ -129,7 +129,9 @@ export function productivityOf(db: Db, viewer: UserRow) {
     karma_last_update: 0,
     karma_trend: 'stable',
     karma_update_reasons: [],
-    project_colors: Object.fromEntries((db.prepare('SELECT id, color FROM projects WHERE is_deleted = 0').all() as Array<{ id: string; color: string }>).map((row) => [row.id, row.color])),
+    project_colors: Object.fromEntries((db.prepare(`SELECT id, color FROM projects WHERE is_deleted = 0
+      AND id IN (SELECT project_id FROM project_members WHERE user_id = @viewer AND state = 'active')`).all({ viewer: viewer.id }) as Array<{ id: string; color: string }>)
+      .map((row) => [row.id, row.color])),
     week_items: [{ from: days[0], to: days[days.length - 1], items: [], total_completed: days.reduce((sum, day) => sum + (byDay.get(day)?.length ?? 0), 0) }],
   };
 }

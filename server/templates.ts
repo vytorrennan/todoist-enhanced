@@ -4,6 +4,10 @@ import type { UserRow } from './auth';
 import { applyDirect } from './commands';
 import { requireProject } from './access';
 import { readNaturalDate } from '../src/domain/nlp';
+import { ruleFromString } from '../src/domain/repeatRule';
+
+const ISO_DUE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+const RECURRING = /\b(every|tous les|chaque|tout les)\b/i;
 import { todayIn } from './dates';
 
 /**
@@ -110,6 +114,11 @@ export interface ImportedIds {
 
 /** Reads CSV into a project, or into a new one named by its project row. Returns the ids the import made. */
 export function importCsv(db: Db, viewer: UserRow, projectId: string | null, text: string): ImportedIds {
+  // One transaction: a row that fails leaves nothing of the import behind, not half a project.
+  return db.transaction(() => importRows(db, viewer, projectId, text))();
+}
+
+function importRows(db: Db, viewer: UserRow, projectId: string | null, text: string): ImportedIds {
   const rows = parseCsv(text);
   const body = rows.length && rows[0][0]?.toUpperCase() === 'TYPE' ? rows.slice(1) : rows;
   const made: ImportedIds = { project: null, sections: [], tasks: [], comments: [] };
@@ -139,12 +148,14 @@ export function importCsv(db: Db, viewer: UserRow, projectId: string | null, tex
     } else if (kind === 'task') {
       const indent = Math.max(1, Math.min(Number(row[4]) || 1, stack.length + 1, 20));
       const parent = indent > 1 ? stack[indent - 2] : null;
-      const priority = Math.min(4, Math.max(1, Number(row[3]) || 1));
-      const args: Record<string, unknown> = { content: (row[1] || 'Task').slice(0, 500), description: row[2] ?? '', priority, project_id: target };
+      const priority = Math.min(4, Math.max(1, Math.trunc(Number(row[3]) || 1)));
+      const content = (row[1] ?? '').trim() || 'Task';
+      const args: Record<string, unknown> = { content: content.slice(0, 500), description: row[2] ?? '', priority, project_id: target };
       if (parent) args.parent_id = parent;
-      else if (section) args.section_id = section;
-      const due = row[7] ?? '';
-      if (/^\d{4}-\d{2}-\d{2}/.test(due)) args.due = { date: due.slice(0, 16), string: due, lang: row[8] || 'en' };
+      if (section) args.section_id = section;
+      const due = (row[7] ?? '').trim();
+      if (ISO_DUE.test(due)) args.due = { date: due, string: due.slice(0, 10), lang: row[8] || 'en' };
+      else if (due && RECURRING.test(due) && ruleFromString(due)) args.due = { string: due, lang: row[8] || 'en', is_recurring: true };
       else if (due) {
         const reading = readNaturalDate(due, new Date(`${todayIn(viewer.timezone)}T12:00:00`), { locale: 'en' });
         if (reading) args.due = { date: reading.date, string: due, lang: 'en' };
@@ -158,9 +169,9 @@ export function importCsv(db: Db, viewer: UserRow, projectId: string | null, tex
         stack[indent - 1] = task;
         last = task;
       }
-    } else if (kind === 'note' && last) {
+    } else if (kind === 'note' && last && (row[1] ?? '').trim()) {
       const temp = `csv-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const temps = applyDirect(db, viewer, 'note_add', { item_id: last, content: row[1] ?? '' }, temp);
+      const temps = applyDirect(db, viewer, 'note_add', { item_id: last, content: (row[1] ?? '').trim() }, temp);
       const note = temps.get(temp);
       if (note) made.comments.push(note);
     }

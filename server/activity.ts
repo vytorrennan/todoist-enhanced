@@ -41,6 +41,12 @@ function placeOf(db: Db, object: string, id: string): { project: string | null; 
     const row = db.prepare('SELECT project_id FROM sections WHERE id = ?').get(id) as { project_id: string } | undefined;
     return { project: row?.project_id ?? null, item: null };
   }
+  if (object === 'reminder' || object === 'location_reminder') {
+    const table = object === 'reminder' ? 'reminders' : 'location_reminders';
+    const row = db.prepare(`SELECT r.item_id, i.project_id FROM ${table} r JOIN items i ON i.id = r.item_id WHERE r.id = ?`)
+      .get(id) as { item_id: string; project_id: string } | undefined;
+    return row ? { project: row.project_id, item: row.item_id } : { project: null, item: null };
+  }
   if (object === 'comment') {
     const row = db.prepare('SELECT item_id, project_id FROM notes WHERE id = ?').get(id) as { item_id: string | null; project_id: string | null } | undefined;
     if (!row) return { project: null, item: null };

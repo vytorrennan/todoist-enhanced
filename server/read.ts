@@ -2,6 +2,8 @@ import type { Db } from './db';
 import { currentSeq } from './db';
 import type { UserRow } from './auth';
 import { VISIBLE_PROJECT_SQL, visibleSql } from './access';
+import type { ReminderRow } from './reminders';
+import { reminderApiShape } from './rest-shapes';
 import {
   collaboratorOut, filterOut, folderOut, labelOut, type ItemRow, itemOut, noteOut, type NoteRow, projectOut, type ProjectRow,
   sectionOut, userOut, workspaceOut, bool,
@@ -92,6 +94,13 @@ export function readFor(db: Db, viewer: UserRow, since: number | null, types: re
       ? db.prepare(`SELECT * FROM sections WHERE is_deleted = 0 AND ${VISIBLE_PROJECT_SQL}`).all(params)
       : db.prepare(`SELECT * FROM sections WHERE seq > @since AND ${VISIBLE_PROJECT_SQL}`).all(params);
     data.sections = (rows as Parameters<typeof sectionOut>[0][]).map(sectionOut);
+  }
+
+  if (want('reminders')) {
+    const rows = db.prepare(`SELECT r.*, i.project_id AS project_id FROM reminders r JOIN items i ON i.id = r.item_id
+      WHERE ${full ? 'r.is_deleted = 0' : 'r.seq > @since'} AND i.is_deleted = 0 AND ${visibleSql('i.project_id')}
+      AND (r.user_id = @viewer OR r.notify_uid = @viewer)`).all(params) as Array<ReminderRow & { project_id: string }>;
+    data.reminders = rows.map((row) => (row.is_deleted ? { id: row.id, item_id: row.item_id, is_deleted: true } : reminderApiShape(row)));
   }
 
   if (want('labels')) {

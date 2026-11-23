@@ -224,6 +224,9 @@ export function createApp(options: AppOptions): App {
 
   // A CSV file imported into a project (the API's import, as the MCP calls it).
   router.add('POST', '/api/v1/projects/:id/import', 'bearer', async (req, res) => {
+    if (!String(req.raw.headers['content-type'] ?? '').includes('multipart/form-data')) {
+      throw ApiFailure.badRequest('Send the file as a multipart form.', 'INVALID_ARGUMENT');
+    }
     const owner = req.user as UserRow;
     const file = await receiveUpload(req.raw, owner, () => userForToken(db, req.bearer) !== null);
     try {
@@ -254,7 +257,13 @@ export function createApp(options: AppOptions): App {
 
   async function receiveUpload(raw: IncomingMessage, owner: UserRow, stillSignedIn: () => boolean): Promise<StoredFile> {
     return new Promise<StoredFile>((resolveUpload, reject) => {
-      const busboy = Busboy({ headers: raw.headers, limits: { fileSize: uploadLimit, files: 1, fields: 5 } });
+      let busboy: ReturnType<typeof Busboy>;
+      try {
+        busboy = Busboy({ headers: raw.headers, limits: { fileSize: uploadLimit, files: 1, fields: 5 } });
+      } catch {
+        reject(ApiFailure.badRequest('Send the file as a multipart form with a boundary.', 'INVALID_ARGUMENT'));
+        return;
+      }
       let name = '';
       let pending: Promise<StoredFile> | null = null;
       let source: { destroy: (error?: Error) => void } | null = null;
@@ -277,7 +286,8 @@ export function createApp(options: AppOptions): App {
         });
         pending.catch(() => undefined);
       });
-      busboy.on('error', (error: Error) => {
+      busboy.on('error', (failure: Error) => {
+        const error = failure instanceof ApiFailure ? failure : ApiFailure.badRequest('The upload could not be read.', 'UPLOAD_FAILED');
         // A broken body leaves nothing behind: the file in progress is stopped, and one already kept is forgotten.
         source?.destroy(error);
         if (pending) pending.then((stored) => removeUpload(db, options.dataDir, stored.id), () => undefined);

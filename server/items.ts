@@ -1,5 +1,5 @@
 import { ApiFailure, type Db, newId, nextSeq } from './db';
-import { activeMembership, canBeAssigned, requireProject } from './access';
+import { activeMembership, canBeAssigned, requireProject, visibleSql } from './access';
 import { requireFullSyncFor } from './sharing';
 import { type Args, type Ctx, endOfList, id as idArg, integer, renumber, resolveId, text, truthy } from './ctx';
 import { advanceRecurring, resolveDue, type StoredDue } from './recurrence';
@@ -292,6 +292,7 @@ export function deleteItem(ctx: Ctx, itemId: string): void {
   requireProject(db, row.project_id, ctx.viewer.id, 'write');
   for (const id of subtreeIds(db, row.id)) {
     db.prepare('UPDATE items SET is_deleted = 1, seq = ? WHERE id = ? AND is_deleted = 0').run(nextSeq(db), id);
+    db.prepare('UPDATE notes SET is_deleted = 1, seq = ? WHERE item_id = ? AND is_deleted = 0').run(nextSeq(db), id);
   }
 }
 
@@ -301,14 +302,17 @@ export function moveItem(ctx: Ctx, args: Args): void {
   requireProject(db, row.project_id, ctx.viewer.id, 'write');
   const parentGiven = 'parent_id' in args;
   const parentId = parentGiven ? resolveId(ctx, args.parent_id) || null : null;
-  const parent = parentId ? db.prepare('SELECT * FROM items WHERE id = ? AND is_deleted = 0').get(parentId) as ItemRow | undefined : undefined;
+  const parent = parentId
+    ? db.prepare(`SELECT * FROM items WHERE id = @id AND is_deleted = 0 AND ${visibleSql('project_id')}`).get({ id: parentId, viewer: ctx.viewer.id }) as ItemRow | undefined
+    : undefined;
   if (parentId && !parent) throw ApiFailure.badRequest('The parent task does not exist.', 'PARENT_NOT_IN_PROJECT');
   if (parentId && subtreeIds(db, row.id).includes(parentId)) throw ApiFailure.badRequest('A task cannot be moved under itself.', 'CYCLE');
 
   // A section names its project, so a task sent to a section of another project needs no project as well.
   const sectionGiven = typeof args.section_id === 'string' && args.section_id ? resolveId(ctx, args.section_id) : null;
   const sectionProject = sectionGiven
-    ? (db.prepare('SELECT project_id FROM sections WHERE id = ? AND is_deleted = 0').get(sectionGiven) as { project_id: string } | undefined)?.project_id
+    ? (db.prepare(`SELECT project_id FROM sections WHERE id = @id AND is_deleted = 0 AND ${visibleSql('project_id')}`)
+      .get({ id: sectionGiven, viewer: ctx.viewer.id }) as { project_id: string } | undefined)?.project_id
     : undefined;
   const targetProject = resolveId(ctx, idArg(args, 'project_id') ?? sectionProject ?? parent?.project_id ?? row.project_id);
   requireProject(db, targetProject, ctx.viewer.id, 'write');

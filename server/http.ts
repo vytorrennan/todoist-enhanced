@@ -178,6 +178,7 @@ export function serveStatic(root: string, urlPath: string, res: Response, method
   } catch {
     return false;
   }
+  if (decoded.includes('\0')) return false;
   const requested = normalize(decoded).replace(/^[/\\]+/, '');
   let file = resolve(base, requested);
   if (file !== base && !file.startsWith(base + sep)) return false;

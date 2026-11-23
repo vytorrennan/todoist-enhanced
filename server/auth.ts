@@ -34,6 +34,8 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  // No account can hold a longer password, and hashing an arbitrary one is work a stranger should not cause.
+  if (password.length > MAX_PASSWORD) return false;
   const [scheme, n, r, p, salt, key] = stored.split('$');
   if (scheme !== 'scrypt' || !salt || !key) return false;
   const expected = Buffer.from(key, 'base64');
