@@ -230,9 +230,9 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
         />
       ) : (
         <div className="mode">
-          {columns.map((column) => (
+          {columns.map((column, index) => (
             <TaskGroup
-              key={column.id}
+              key={`${index}:${column.id}`}
               keepWhenEmpty
               title={column.title}
               items={column.items}

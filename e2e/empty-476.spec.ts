@@ -32,7 +32,7 @@ test('the project picker keeps all colours visible', async ({ demo: page }) => {
   await page.screenshot({ path: 'test-results/project-picker-476.png' });
 });
 
-test('a free account sees the deadline explanation from the usual composer button', async ({ demo: page }) => {
+test('the deadline explanation from the usual composer button says every account has deadlines', async ({ demo: page }) => {
   test.skip(process.env.PLAYWRIGHT_DEV !== '1', 'Uses the development store fixture');
   await page.route('**/api/v1/**', (route) => route.fulfill({ json: route.request().url().includes('/sync') ? { sync_token: 'test', full_sync: false } : { results: [], items: [], next_cursor: null } }));
   await page.evaluate(() => {
@@ -45,8 +45,7 @@ test('a free account sees the deadline explanation from the usual composer butto
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Deadline' }).click();
   const notice = page.locator('.deadline-pro-notice');
-  await expect(notice).toContainText('Pro or Business is required to set a deadline.');
-  const link = notice.getByRole('link', { name: 'See Todoist plans' });
-  await expect(link).toHaveAttribute('href', 'https://www.todoist.com/pricing');
-  expect(await link.evaluate((node) => node.parentElement?.tagName)).toBe('P');
+  // Enhanced has no plans: every account has deadlines, so there is no link to a price page.
+  await expect(notice).toContainText('Deadlines are available on every account.');
+  await expect(notice.getByRole('link')).toHaveCount(0);
 });
