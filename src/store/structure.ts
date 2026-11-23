@@ -344,7 +344,7 @@ export const createStructureSlice: Slice<StructureSlice> = (_set, get) => ({
     if (sibling?.parent_id) args.parent_id = sibling.parent_id;
     if (extra.parentId) args.parent_id = extra.parentId;
     /* A folder holds a project in place of a parent project (#463). */
-    if (extra.folderId && workspaceId && !extra.parentId) args.folder_id = extra.folderId;
+    if (extra.folderId && workspaceId && !extra.parentId && !args.parent_id) args.folder_id = extra.folderId;
     if (extra.description) args.description = extra.description;
     if (extra.favourite) args.is_favorite = true;
     if (extra.viewStyle) args.view_style = extra.viewStyle;
@@ -382,14 +382,18 @@ export const createStructureSlice: Slice<StructureSlice> = (_set, get) => ({
           siblings[insertAt]?.order_key ?? null,
         );
       } catch {
-        orderKey = null;
-        const shifted = siblings.slice(insertAt).map((project, offset) => ({
-          id: project.id,
-          child_order: insertAt + offset + 2,
-        }));
-        if (shifted.length > 0) {
-          commands.push(command('project_reorder', { projects: shifted }));
-        }
+        /* Not every sibling has a key yet. One reorder gives every sibling a
+           number and a key, and the new project the key between them, so the
+           list sorts the same way by key and by number. Naming only the
+           siblings below would leave the others' keys out of step. */
+        const keys = keysInOrder(siblings.length + 1);
+        orderKey = keys[insertAt];
+        args.child_order = childOrder;
+        const reordered = siblings.map((project, index) => {
+          const position = index < insertAt ? index : index + 1;
+          return { id: project.id, child_order: position + 1, order_key: keys[position] };
+        });
+        commands.push(command('project_reorder', { projects: reordered }));
       }
     }
     if (orderKey) args.order_key = orderKey;

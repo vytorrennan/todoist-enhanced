@@ -664,6 +664,37 @@ describe('the seventh review', () => {
   });
 });
 
+/** The eighth review: each test fails without the fix it names. */
+describe('the eighth review', () => {
+  it('a project named twice in one order is refused, so its number and key cannot disagree', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Twice A' }, { temp_id: tempId(240) }),
+      command('project_add', { name: 'Twice B' }, { temp_id: tempId(241) }),
+    ]);
+    const a = made.real(240);
+    const b = made.real(241);
+    const twice = await run(owner, [command('project_reorder', {
+      projects: [{ id: a, child_order: 2 }, { id: b, child_order: 1 }, { id: a, child_order: 0 }],
+    })]);
+    expect(twice.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+  });
+
+  it('a project cannot be given a parent project and a folder together', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('workspace_add', { name: 'Both hall' }, { temp_id: tempId(250) }),
+      command('folder_add', { name: 'Either', workspace_id: tempId(250) }, { temp_id: tempId(251) }),
+      command('project_add', { name: 'Host' }, { temp_id: tempId(252) }),
+      command('project_move_to_workspace', { project_id: tempId(252), workspace_id: tempId(250) }),
+    ]);
+    const both = await run(owner, [command('project_add', {
+      name: 'Both', parent_id: made.real(252), folder_id: made.real(251),
+    })]);
+    expect(both.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+  });
+});
+
 describe('a CSV import', () => {
   it('keeps a subtask in its parent\'s section', async () => {
     const who = await person(base);

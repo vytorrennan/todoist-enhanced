@@ -90,7 +90,9 @@ export function moveProjectToWorkspace(ctx: Ctx, id: string, workspaceId: string
 /**
  * Takes a project out of its workspace. Everyone else loses access: the
  * owner can share it again, and nobody keeps a place they were given only
- * through the team.
+ * through the team. The folder it was in stays with the workspace. A guest
+ * who owns the project may still take it out: that is the owner's decision,
+ * as deleting it is.
  */
 export function moveProjectToPersonal(ctx: Ctx, id: string): void {
   const { db, viewer } = ctx;
@@ -114,6 +116,8 @@ export function addProject(ctx: Ctx, args: Args, tempId?: string): void {
   const color = cleanColor(args.color) ?? 'charcoal';
   const parentArg = idArg(args, 'parent_id');
   const parentId = parentArg ? resolveId(ctx, parentArg) : null;
+  // A project is in a parent project or in a folder, never both: the sidebar and the tree disagree otherwise.
+  if (parentId && idArg(args, 'folder_id')) throw ApiFailure.badRequest('A project is in a parent project or a folder, not both.', 'INVALID_ARGUMENT');
   // Only the owner of a project nests projects under it, so the owner can always manage the whole branch.
   let parentWorkspace: string | null = null;
   if (parentId) {
@@ -261,9 +265,13 @@ export function reorderProjects(ctx: Ctx, args: Args): void {
     throw ApiFailure.badRequest('Name an order key for every project in the order, or for none.', 'MIXED_ORDER_KEYS');
   }
   const placed: Array<{ id: string; childOrder: number; position: number }> = [];
+  const named = new Set<string>();
   entries.forEach((entry, index) => {
     if (!entry || typeof entry !== 'object') throw ApiFailure.badRequest('Each project order names a project.', 'INVALID_ARGUMENT');
     const id = resolveId(ctx, entry.id);
+    // A project is placed once: a second place for it would leave its number and its key saying different things.
+    if (named.has(id)) throw ApiFailure.badRequest('A project is named once in an order.', 'INVALID_ARGUMENT');
+    named.add(id);
     const membership = requireProject(db, id, viewer.id, 'read');
     // An omitted child order keeps the place; an explicit one, null included, must be a whole number.
     const childOrder = 'child_order' in entry ? wholeNumber(entry.child_order) : membership.child_order;
