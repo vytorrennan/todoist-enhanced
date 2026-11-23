@@ -155,6 +155,23 @@ describe('the official tools, against this server', () => {
     expect((await call(assistant, 'find-filters', { search: 'Urgent work' })).data.filters).toEqual([]);
   });
 
+  it('finds the tasks due on a day, and those due across a span of days', async () => {
+    // The days are Tuesday to Thursday, so the account's recurring Monday task is never in the window.
+    const project = createdIds(await call(assistant, 'add-projects', { projects: [{ name: 'Retrieval' }] }), 'projects')[0];
+    const [inSpan] = createdIds(await call(assistant, 'add-tasks', {
+      tasks: [{ content: 'Due in the span', projectId: project, dueString: '2030-03-06' }],
+    }), 'tasks');
+    createdIds(await call(assistant, 'add-tasks', { tasks: [{ content: 'Due after the span', projectId: project, dueString: '2030-04-30' }] }), 'tasks');
+
+    const onDay = await call(assistant, 'find-tasks-by-date', { startDate: '2030-03-06', daysCount: 1 });
+    expect(onDay.isError, onDay.text).toBe(false);
+    expect(onDay.data.tasks.map((task: { id: string }) => task.id)).toEqual([inSpan]);
+
+    const span = await call(assistant, 'find-tasks-by-date', { startDate: '2030-03-05', daysCount: 3 });
+    expect(span.isError, span.text).toBe(false);
+    expect(span.data.tasks.map((task: { id: string }) => task.id)).toEqual([inSpan]);
+  });
+
   it('reads a due phrase the way the app does, and a repeat rule as a repeat', async () => {
     const project = createdIds(await call(assistant, 'add-projects', { projects: [{ name: 'Routines' }] }), 'projects')[0];
     const [weekly] = createdIds(await call(assistant, 'add-tasks', {
@@ -326,6 +343,20 @@ describe('known gaps', () => {
   // closed, the test passes, vitest reports that as an error, and the marker comes off.
   it.fails('reads the signed-in user through the Sync API, as get-user-status does', async () => {
     const reply = await call(assistant, 'get-user-status');
+    expect(reply.isError, reply.text).toBe(false);
+  });
+
+  // The label and section searches are outside the workflows above. Found by running every read-only tool against an
+  // account with data: this server does not answer these calls yet.
+  it.fails('lists the labels, as find-labels does', async () => {
+    const reply = await call(assistant, 'find-labels', {});
+    expect(reply.isError, reply.text).toBe(false);
+  });
+
+  it.fails('finds sections by name, as find-sections does with searchText', async () => {
+    const project = createdIds(await call(assistant, 'add-projects', { projects: [{ name: 'Gap sections' }] }), 'projects')[0];
+    createdIds(await call(assistant, 'add-sections', { sections: [{ name: 'Gap section', projectId: project }] }), 'sections');
+    const reply = await call(assistant, 'find-sections', { projectId: project, searchText: 'Gap' });
     expect(reply.isError, reply.text).toBe(false);
   });
 });

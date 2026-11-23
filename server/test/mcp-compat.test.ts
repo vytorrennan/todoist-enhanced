@@ -116,3 +116,21 @@ describe('finding a project by its name', () => {
     expect(second.body.next_cursor).toBeNull();
   });
 });
+
+describe('filters that name one day', () => {
+  it('finds the tasks due on a day with due: and the tasks scheduled for it with date:, and refuses a day that does not exist', async () => {
+    const who = await person(base);
+    const dated = (content: string, date: string) => command('item_add', { content, project_id: who.inbox, due: { date } });
+    await as(who).sync({ commands: [dated('Due that day', '2030-01-15'), dated('Due another day', '2030-01-16')] });
+
+    const find = (query: string) => as(who).get(`/api/v1/tasks/filter?query=${encodeURIComponent(query)}`);
+    const dueOn = await find('due: 2030-01-15');
+    expect(dueOn.status).toBe(200);
+    expect(dueOn.body.results.map((task: { content: string }) => task.content)).toEqual(['Due that day']);
+    expect((await find('date: 2030-01-15')).body.results.map((task: { content: string }) => task.content)).toEqual(['Due that day']);
+
+    const impossible = await find('due: 2030-02-30');
+    expect(impossible.status).toBe(400);
+    expect(impossible.body.error_tag).toBe('INVALID_FILTER');
+  });
+});
