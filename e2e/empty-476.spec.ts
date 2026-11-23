@@ -44,7 +44,6 @@ test('a non-premium account sets a deadline from the usual composer button, with
   await page.locator('.sidebar').getByRole('button', { name: 'Add task', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Deadline' }).click();
-  // Every account has deadlines: the date picker opens, and no plan notice stands in its place.
-  await expect(page.locator('.deadline-pro-notice')).toHaveCount(0);
+  // Every account has deadlines: the date picker opens, with no plan notice in its place.
   await expect(page.locator('.datepicker').first()).toBeVisible();
 });

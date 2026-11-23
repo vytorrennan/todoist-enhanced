@@ -114,7 +114,7 @@ export function TableSurface({ groups, viewKey, childrenOf, onOpen, onAddSection
         {groups.map((group, index) => {
           const groupChildren = group.childrenOf ?? childrenOf;
           const sorted = sortItems(group.items, current.sort, groupChildren, group.reorderable || 'project', snapshot);
-          return <Fragment key={`${group.sectionId ?? group.title ?? ''}-${index}`}>
+          return <Fragment key={group.stableKey ?? `${group.sectionId ?? group.title ?? ''}-${index}`}>
             {onAddSection && index > 0 && <AddSectionLine label={t('section.add')} slotId={String(index - 1)} onAdd={() => onAddSection(index - 1)} />}
             <TaskGroup {...group} viewKey={viewKey}
               items={current.tableDescending ? sorted.reverse() : sorted} childrenOf={groupChildren} onOpen={onOpen} keepWhenEmpty />

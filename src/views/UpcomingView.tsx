@@ -212,7 +212,7 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
         <CalendarSurface viewKey="upcoming" items={items} onOpen={onOpen} onAddTaskTo={onAddTaskTo} />
       ) : current.mode === 'table' ? (
         <TableSurface viewKey="upcoming" childrenOf={childrenOf} onOpen={onOpen}
-          groups={columns.map((column) => ({ title: column.title, items: column.items, childrenOf, onOpen,
+          groups={columns.map((column) => ({ stableKey: column.id, title: column.title, items: column.items, childrenOf, onOpen,
             actions: column.action,
             onAddTask: column.dropTarget && column.id !== 'overdue' ? () => onAddTaskTo({ date: column.id }) : undefined }))} />
       ) : current.mode === 'board' ? (
