@@ -30,7 +30,7 @@ test.describe('the frame', () => {
   test('every accent leaves white text readable on the coloured sidebar', async ({ demo: page }) => {
     await go(page, '#/settings');
     await page.getByRole('radio', { name: 'Coloured' }).click();
-    for (const accent of ['Todoist', 'Sunflower', 'Lagoon', 'Graphite', 'Cocoa']) {
+    for (const accent of ['Red', 'Sunflower', 'Lagoon', 'Graphite', 'Cocoa']) {
       await page.getByRole('radio', { name: accent, exact: true }).click();
       const ratio = await page.evaluate(() => {
         const gradient = document.documentElement.style.getPropertyValue('--back-gradient');

@@ -1,7 +1,6 @@
 import { useDataSnapshot } from '@/hooks/useDataSnapshot';
 import { openItems } from './store/selectors';
 import { useLabelRenames } from './hooks/useLabelRenames';
-import { seesHireNote } from '@/domain/hireNote';
 import { EstimateConversion } from '@/components/overlays/EstimateConversion';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './components/Icon';
@@ -10,7 +9,6 @@ import { BulkBar } from './components/BulkBar';
 import { DragProvider } from './components/dnd/DragProvider';
 import { Composer } from './components/overlays/Composer';
 import { TaskDetail } from './components/overlays/TaskDetail';
-import { useTodoistLinks } from './hooks/useTodoistLinks';
 import { Issues } from './components/overlays/Issues';
 import { Search } from './components/overlays/Search';
 import { Shortcuts } from './components/overlays/Shortcuts';
@@ -55,7 +53,7 @@ import { useT } from './hooks/useT';
 import { useSelectionBlocks } from './hooks/useSelectionBlocks';
 import { useKeyboard } from './hooks/useKeyboard';
 import { useData } from './hooks/useData';
-import { navigate, useRoute, type Route } from './hooks/useRoute';
+import { navigate, replaceRoute, useRoute, type Route } from './hooks/useRoute';
 import { labelRoots, rootItems } from './store/selectors';
 import { detectConflicts } from './domain/conflicts';
 import { placementForPage } from './domain/dnd';
@@ -330,31 +328,6 @@ export function App() {
     if (!pomodoroAsked) setAskPomodoro(true);
   }, [ready, connected, demo, settled, userId, tourOpen, walkthroughOpen, whatsNew, setupDone, seenVersion, pomodoroAsked]);
 
-  /* A note for Todoist's own people, once. Put up only when nothing else has
-     the page — no tour, no first run, no What's new — so it is not lost behind
-     them, and recorded on the account the moment it is shown. */
-  const userEmail = useStore((s) => s.snapshot.user?.email);
-  const hireNoteSeen = useStore((s) => s.prefs.hireNoteSeen);
-  const setHireNote = useStore((s) => s.setHireNote);
-  useEffect(() => {
-    if (QUICK_ADD || demo || !ready || !connected || !settled || !hasOnboarded(userId)) return;
-    if (tourOpen || walkthroughOpen || whatsNew || !setupDone || seenVersion !== VERSION) return;
-    if (hireNoteSeen || !seesHireNote(userEmail)) return;
-    setHireNote(true);
-    setPrefs({ hireNoteSeen: true });
-  }, [ready, connected, demo, settled, userId, tourOpen, walkthroughOpen, whatsNew, setupDone,
-    seenVersion, hireNoteSeen, userEmail, setHireNote, setPrefs]);
-
-  /* Development only: shows the note without a Todoist address or a fresh
-     account, whether it was seen already or not. Open the app with ?hire, or
-     from the console: window.dispatchEvent(new Event('enhanced:hire-note')). */
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    const show = () => setHireNote(true);
-    if (new URLSearchParams(window.location.search).has('hire')) show();
-    window.addEventListener('enhanced:hire-note', show);
-    return () => window.removeEventListener('enhanced:hire-note', show);
-  }, [setHireNote]);
 
   const storageOpen = shouldAskEstimateStorage({
     ready: ready && connected && Boolean(userId), settled, demo, quickAdd: QUICK_ADD,
@@ -850,8 +823,23 @@ function AppShell({
   }, [route.view, route.id]);
 
   const openTask = useCallback((id: string) => setOpenTaskId(id), [setOpenTaskId]);
+  /* A link to a task opens it on its project's page (see api/links.ts). */
+  const routeTaskId = route.taskId;
+  const addressTask = useRef<string | undefined>(undefined);
+  const taskWasOpen = useRef(false);
+  useEffect(() => {
+    if (routeTaskId) setOpenTaskId(routeTaskId);
+    // Back removed the task from the address: the task closes with it.
+    else if (addressTask.current) setOpenTaskId(null);
+    addressTask.current = routeTaskId;
+  }, [routeTaskId, setOpenTaskId]);
+  useEffect(() => {
+    if (openTaskId) { taskWasOpen.current = true; return; }
+    // A task closed from the page: the address stops naming it, so Back does not reopen it.
+    if (taskWasOpen.current && addressTask.current) replaceRoute(route.view, route.id, { sectionId: route.sectionId });
+    taskWasOpen.current = false;
+  }, [openTaskId, route.view, route.id, route.sectionId]);
   // A link to a Todoist item the app has opens here instead of in Todoist (#419).
-  useTodoistLinks(openTask, useCallback(() => setOpenTaskId(null), [setOpenTaskId]));
   const addTask = () => {
     setPlacement(placementForPage(route, snapshot.user?.inbox_project_id));
     setComposerOpen(true);

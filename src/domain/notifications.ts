@@ -98,7 +98,7 @@ export function readNotification(
     about: type.startsWith('workspace_')
       ? workspace ?? text(n.project_name) ?? project
       : text(n.item_content) ?? item ?? text(n.project_name) ?? project ?? workspace,
-    invitation: invitationId && secret && type === 'share_invitation_sent' && !answered
+    invitation: invitationId && secret && (type === 'share_invitation_sent' || type === 'workspace_invitation_created') && !answered
       ? { id: invitationId, secret }
       : null,
     answered: type === 'share_invitation_sent' || type === 'workspace_invitation_created' ? answered : null,
@@ -152,7 +152,6 @@ export const NOTIFICATION_SENTENCES: Record<string, string> = {
   item_uncompleted: 'notif.type.item_uncompleted',
   note_added: 'notif.type.note_added',
   karma_level: 'notif.type.karma_level',
-  workspace_team_cohort_tagged: 'notif.type.workspace_team_cohort_tagged',
 };
 
 /** The glyph that goes in the small badge on the picture, by kind of notification. */

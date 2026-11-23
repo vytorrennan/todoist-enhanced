@@ -1,7 +1,6 @@
 import { CalendarSurface } from '@/components/CalendarSurface';
 import { pageClass } from '@/domain/pageLayout';
 import { InsightsButton } from '@/components/InsightsButton';
-import { HireNote } from '@/components/HireNote';
 import { useMemo, useState, type ReactNode } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { SubtasksProvider } from '@/components/TaskRow';
@@ -54,7 +53,6 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
   const updateMany = useStore((s) => s.updateMany);
   const confirm = useConfirm();
   const current = viewPrefs(prefs, 'upcoming');
-  const hireNoteOpen = useStore((s) => s.hireNote);
   /* Upcoming answers "when?", so it only groups by time: a day (the
      default), a week or a month. A grouping saved before this (project,
      priority, tag, none) reads as days (#98). */
@@ -175,12 +173,10 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
   const extension = group === 'day' ? 7 : group === 'week' ? 28 : 90;
 
   /* Hosted by the first day of the list, when the page is that list; under the header otherwise. */
-  const hireInList = current.mode === 'list' && (group !== 'day' || columns.length > 0);
 
   return (
     <div className={pageClass(current)}>
       <PageHeader
-        hireNote={!hireInList}
         title={t('nav.upcoming')}
         actions={
           <>
@@ -234,10 +230,9 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
         />
       ) : (
         <div className="mode">
-          {columns.map((column, index) => (
+          {columns.map((column) => (
             <TaskGroup
               key={column.id}
-              lead={index === 0 && hireNoteOpen ? <HireNote /> : undefined}
               keepWhenEmpty
               title={column.title}
               items={column.items}

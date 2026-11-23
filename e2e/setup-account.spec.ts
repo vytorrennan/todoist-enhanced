@@ -13,10 +13,10 @@ test('closing setup and choosing estimate storage completes setup, including off
   const user = { id: 'account-test', full_name: 'Test User', inbox_project_id: 'inbox', is_premium: true, karma: 0 };
   const note = () => ({ id: 'settings', project_id: 'inbox', item_id: null, content, posted_at: '2026-01-01T00:00:00Z', posted_uid: user.id, is_deleted: false, file_attachment: null });
   await page.addInitScript(() => {
-    localStorage.setItem('tde.token', 'test_token_not_a_real_credential');
+    localStorage.setItem('tde.session', 'test_token_not_a_real_credential');
     localStorage.setItem('onboarded', JSON.stringify(['account-test']));
   });
-  await page.route('https://api.todoist.com/**', async (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/sync')) {
       syncRequests += 1;

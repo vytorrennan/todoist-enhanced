@@ -310,10 +310,6 @@ test('#343 the task menu sets Deadline between two separators', async ({ demo: p
     return [rule(node.previousElementSibling), node.tagName === 'BUTTON', rule(node.nextElementSibling)];
   });
   expect([above, button, below]).toEqual([true, true, true]);
-  const mark = page.getByRole('button', { name: 'Open in Todoist' }).locator('svg');
-  await expect(mark).toHaveCSS('stroke', 'none');
-  /* A light grey of its own: the solid mark is heavier than the line icons around it. */
-  await expect(mark).toHaveCSS('fill', 'rgb(143, 143, 143)');
 });
 
 test('#338 a typing comment frame is greyer, a long comment scrolls past the buttons', async ({ demo: page }) => {

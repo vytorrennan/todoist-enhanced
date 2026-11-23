@@ -7,7 +7,7 @@ test('empty lists explain the view and preserve the correct add action', async (
   await page.evaluate(() => {
     const store = (window as unknown as { __store: { getState: () => any; setState: (v: any) => void } }).__store; // eslint-disable-line @typescript-eslint/no-explicit-any
     const state = store.getState();
-    store.setState({ snapshot: { ...state.snapshot, items: {}, sections: {} }, prefs: { ...state.prefs, views: {} }, hireNote: false });
+    store.setState({ snapshot: { ...state.snapshot, items: {}, sections: {} }, prefs: { ...state.prefs, views: {} } });
   });
   for (const [route, title] of [['#/today', 'Nothing planned for today'], ['#/week', 'Nothing planned this week'], ['#/month', 'Nothing planned this month'], ['#/someday', 'Nothing saved for someday'], ['#/inbox', 'Your inbox is clear'], ['#/label/quick', 'No tasks with this tag']]) {
     await go(page, route);
@@ -34,11 +34,11 @@ test('the project picker keeps all colours visible', async ({ demo: page }) => {
 
 test('a free account sees the deadline explanation from the usual composer button', async ({ demo: page }) => {
   test.skip(process.env.PLAYWRIGHT_DEV !== '1', 'Uses the development store fixture');
-  await page.route('https://api.todoist.com/**', (route) => route.fulfill({ json: route.request().url().includes('/sync') ? { sync_token: 'test', full_sync: false } : { results: [], items: [], next_cursor: null } }));
+  await page.route('**/api/v1/**', (route) => route.fulfill({ json: route.request().url().includes('/sync') ? { sync_token: 'test', full_sync: false } : { results: [], items: [], next_cursor: null } }));
   await page.evaluate(() => {
     const store = (window as unknown as { __store: { getState: () => any; setState: (v: any) => void } }).__store; // eslint-disable-line @typescript-eslint/no-explicit-any
     const state = store.getState();
-    localStorage.setItem('tde.token', 'synthetic-test-token');
+    localStorage.setItem('tde.session', 'synthetic-test-token');
     store.setState({ demo: false, connected: true, settingsChecked: true, prefs: { ...state.prefs, setupDone: true, onboarded: true }, snapshot: { ...state.snapshot, user: { ...state.snapshot.user, is_premium: false, premium_status: 'not_premium' } } });
   });
   await page.locator('.sidebar').getByRole('button', { name: 'Add task', exact: true }).click();

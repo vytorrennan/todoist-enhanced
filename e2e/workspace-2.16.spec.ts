@@ -8,7 +8,7 @@ test.skip(process.env.PLAYWRIGHT_DEV !== '1', 'Workspace fixtures use the develo
 test('workspace counts use server totals, members and archive paginate, and cached data survives offline navigation', async ({ demo: page }) => {
   const reads: string[] = [];
   let completed = 12;
-  await page.route('https://api.todoist.com/**', async (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url()); reads.push(url.pathname + url.search);
     let response: unknown;
     if (url.pathname.endsWith('/sync')) {

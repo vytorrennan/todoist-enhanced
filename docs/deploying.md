@@ -1,75 +1,97 @@
-# Uploading a build
+# Running the server
 
-The build is a static site: `npm run build` puts it in `dist/`, and any host
-that serves files will do. What follows is the part that is easy to get wrong.
+The app and its API are one Node process. It serves the built app from
+`dist/`, answers `/api/v1/…`, and keeps everything in one SQLite file. There is
+nothing else to deploy.
 
-Upload the **whole** of `dist/`, `assets/` and the dotfile included. Every
-other file sits at the root, which is deliberate: the icons used to live in
-`dist/icons/`, that folder was dropped by an upload twice, and the second
-failure left a directory on the server that could not be read into or
-repaired by re-uploading. A manifest whose icons all 404 fails the browser's
-installability check silently — the app looks and works perfectly, it simply
-stops offering to install and the installed copy has no icon of its own.
-
-Two things to check after an upload:
+## First run
 
 ```bash
-curl -o /dev/null -w '%{http_code}\n' https://<host>/icon-192.png   # 200
-curl -o /dev/null -w '%{content_type}\n' https://<host>/manifest.webmanifest
-curl -s https://<host>/oauth/client.json | head -c 40                     # {"client_id"…
-curl -sI https://<host>/ | grep -i content-security-policy
+npm ci
+npm run build          # the app, into dist/
+npm run build:server   # the server, into dist-server/
+PORT=8787 DATA_DIR=/var/lib/enhanced node dist-server/index.mjs
 ```
 
-The second should say `application/manifest+json`. It comes from `.htaccess`,
-which ships in `dist/` — a dotfile, so a client set to hide them will skip it.
+The first start creates `DATA_DIR/enhanced.db` and runs the schema migrations.
+The log names the address, the data folder, and whether new accounts are open.
+Stop it with Ctrl-C or `SIGTERM`; it finishes what it is doing and closes the
+database.
 
-The third is what "Continue with Todoist" depends on: Todoist fetches that
-file to identify the app. The build writes it for `PUBLIC_URL`, the official
-site by default; a copy hosted anywhere else must be built with
-`PUBLIC_URL=https://<host>/ npm run build` (see "Self-hosting" in the README),
-and the file's `client_id` should then start with that address. If it answers with the app's own page instead, the
-`oauth/` folder was not uploaded and Todoist replies `invalid_client`. The
-fourth checks that `.htaccess` is in place; without it the app still works,
-without its Content-Security-Policy.
+`npm start` is the same as the last line, with the defaults (`127.0.0.1:8787`,
+`./data`, `./dist`).
 
-## Cloudflare Workers Static Assets
+## Put it behind HTTPS
 
-`wrangler.jsonc` serves `dist/` as static assets, with SPA navigation fallback;
-no Worker script or backend is needed. `public/_headers` provides the security
-and cache headers that Apache normally supplies through `.htaccess`. Keep both
-policies and Vite's preview headers in sync. Apache still uses `.htaccess`.
+The server speaks plain HTTP. For anything reachable from another machine, put
+a reverse proxy in front of it that terminates HTTPS and forwards to
+`127.0.0.1:8787`, and set `TDE_SECURE_COOKIES=1` so the session cookie is only
+sent over HTTPS. The proxy should pass `X-Forwarded-Proto` through (the server
+checks it when it decides whether a cookie is Secure).
 
-Use Node 22 and `npm run build`. In Workers Builds, the deploy command is
-`npx wrangler deploy`; do not add `--assets` once the repository configuration
-is present. Before connecting the production hostname, check the actual branch
-and deployment settings: a push to the production branch can deploy immediately.
-For an approval-controlled release, disable automatic deployment or use
-`npx wrangler versions upload` and explicitly promote the intended version.
-Preview builds for other branches can be enabled separately.
+Example with Caddy:
 
-### Testing before the DNS change
+```
+enhanced.example.com {
+  reverse_proxy 127.0.0.1:8787
+}
+```
 
-The existing production domain must remain on the current host during testing.
-Build a test copy with `PUBLIC_URL=https://<stable-test-host>/` and deploy it
-to that exact HTTPS host. The app's OAuth client ID and callback are built for
-one address; a hash-based or branch preview URL is not interchangeable with
-another host. Preview builds may require their own build variable and must be
-tested at the exact address used to build them. The normal production build
-must instead use the official URL (unset `PUBLIC_URL`, or set it explicitly).
-Do not protect `oauth/client.json` behind Cloudflare Access or a challenge:
-Todoist must be able to fetch it without authentication. A test account or demo
-mode avoids changing real Todoist tasks during initial checks.
+## Keeping it running
 
-On the test host, check the four URLs above, `sw.js`, `theme-boot.js` and
-`oauth/client.json`, their cache headers, navigation fallback and a missing
-asset. Confirm OAuth sign-in, API token sign-in, synchronization, installation,
-offline use, reconnect, and the update prompt after a second deployment. Verify
-the same on the official hostname after cutover, including an already installed
-app and a fresh browser. Real OAuth and PWA tests require the deployed host;
-a local build alone does not establish that they work on Cloudflare.
+A systemd unit is enough:
 
-Workers Custom Domains require an active Cloudflare DNS zone. Inspect existing
-DNS records, mail records and any conflicting CNAME before planning the move;
-do not assume a CNAME at another DNS provider is sufficient. Keep the old host
-available and document the precise rollback before changing DNS. Compare loading
-performance in similar conditions before and after the switch.
+```ini
+[Service]
+WorkingDirectory=/opt/enhanced
+Environment=PORT=8787 HOST=127.0.0.1 DATA_DIR=/var/lib/enhanced TDE_SECURE_COOKIES=1 TDE_SIGNUP=closed
+ExecStart=/usr/bin/node dist-server/index.mjs
+Restart=on-failure
+```
+
+`TDE_SIGNUP=closed` stops strangers creating accounts; the people who already
+have one keep signing in. Create the accounts you need first, then close it.
+
+Who you invite is only as trustworthy as who can register. An email address is
+not verified here, so whoever registers an address receives the invitations sent
+to it. This is the trust model of a server you run for people you know: keep
+signup closed on any instance where strangers can register.
+
+## Configuration
+
+See the table in the README. The ones most people change are `DATA_DIR`,
+`HOST`, `TDE_SIGNUP`, and `TDE_SECURE_COOKIES`.
+
+## Health and checks
+
+```bash
+curl -s http://127.0.0.1:8787/api/v1/health      # {"ok":true,"version":"…","seq":…}
+curl -s http://127.0.0.1:8787/api/v1/auth/config  # {"signup":true,"version":"…"}
+curl -sI http://127.0.0.1:8787/ | grep -i content-security-policy
+```
+
+## Backups
+
+The database is one file in WAL mode. Copy it while the server runs with SQLite's
+own backup, which is consistent even under writes:
+
+```bash
+sqlite3 /var/lib/enhanced/enhanced.db ".backup '/backups/enhanced-$(date +%F).db'"
+```
+
+Back up `DATA_DIR/files` at the same time: comments refer to those files by id.
+
+## Upgrading
+
+Stop the server, replace the code, `npm ci`, `npm run build`, `npm run
+build:server`, and start it again. Migrations run on start and are applied
+once, in order. A database written by a newer version is refused rather than
+changed, so a rollback needs the backup taken before the upgrade.
+
+## Limits
+
+- One process, one database file. It suits one person or a small team; it is
+  not a horizontally scaled service.
+- Each person has a request budget (`TDE_REQUESTS_PER_MINUTE`). A client that
+  exceeds it is told to wait with `Retry-After`, and the app honours that.
+- Uploads are kept on disk up to `TDE_MAX_UPLOAD_MB` each.

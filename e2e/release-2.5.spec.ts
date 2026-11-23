@@ -6,7 +6,7 @@ const { version: VERSION } = JSON.parse(readFileSync(new URL('../package.json', 
 
 /** A connected account, set up and through every first run, with the given projects. */
 async function openAccount(page: Page, projects: Array<Record<string, unknown>>, seenVersion = VERSION) {
-  await page.route('https://api.todoist.com/api/v1/**', async (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/sync')) {
       await route.fulfill({ json: { sync_token: 'test', full_sync: true,
@@ -19,7 +19,7 @@ async function openAccount(page: Page, projects: Array<Record<string, unknown>>,
   });
   await page.goto('/');
   await page.evaluate(async (version) => {
-    localStorage.setItem('tde.token', 'fictitious-test-token-only');
+    localStorage.setItem('tde.session', 'fictitious-test-token-only');
     localStorage.setItem('onboarded', JSON.stringify(['account-test']));
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('todoist-enhancements'); request.onupgradeneeded = () => { const d = request.result; for (const [name, options] of [['snapshot', undefined], ['prefs', undefined], ['queue', { keyPath: 'uuid' }]] as const) if (!d.objectStoreNames.contains(name)) d.createObjectStore(name, options); }; request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
     const tx = db.transaction('prefs', 'readwrite');
@@ -180,7 +180,7 @@ async function openWorkspaceAccount(page: Page, options: { refuse?: string } = {
     { id: 'client', name: 'Client work', color: 'blue', child_order: 3, workspace_id: 'w1', access: { visibility: 'team', configuration: {} } },
     { id: 'odd', name: 'Odd one', color: 'red', child_order: 4, workspace_id: 'w1', access: { visibility: 'organisation', configuration: {} } },
   ];
-  await page.route('https://api.todoist.com/api/v1/**', async (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.endsWith('/sync')) return route.fulfill({ json: { results: [], next_cursor: null } });
     const commands = JSON.parse(new URLSearchParams(route.request().postData() ?? '').get('commands') ?? '[]') as Array<{ uuid: string; type: string; args: Record<string, unknown>; temp_id?: string }>;
@@ -200,7 +200,7 @@ async function openWorkspaceAccount(page: Page, options: { refuse?: string } = {
   });
   await page.goto('/');
   await page.evaluate(async (version) => {
-    localStorage.setItem('tde.token', 'fictitious-test-token-only');
+    localStorage.setItem('tde.session', 'fictitious-test-token-only');
     localStorage.setItem('onboarded', JSON.stringify(['account-test']));
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('todoist-enhancements'); request.onupgradeneeded = () => { const d = request.result; for (const [name, options] of [['snapshot', undefined], ['prefs', undefined], ['queue', { keyPath: 'uuid' }]] as const) if (!d.objectStoreNames.contains(name)) d.createObjectStore(name, options); }; request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
     const tx = db.transaction('prefs', 'readwrite');
@@ -230,7 +230,7 @@ test('a new workspace project is sent with its access only when it is not the wo
   let sheet = page.getByRole('dialog', { name: 'New project' });
   await sheet.getByRole('button', { name: 'Workspace' }).click();
   await page.getByRole('option', { name: 'Studio' }).click();
-  await expect(access(sheet).locator('strong')).toHaveText(['Restricted', 'Team', 'Public']);
+  await expect(access(sheet).locator('strong')).toHaveText(['Restricted', 'Team']);
   await expect(access(sheet).getByRole('radio', { name: 'Team' })).toBeChecked();
   await expect(sheet).toContainText('Everyone in the workspace can see and edit it.');
   await sheet.getByRole('textbox', { name: 'Project name' }).fill('Default access');
@@ -251,17 +251,17 @@ test('a new workspace project is sent with its access only when it is not the wo
   expect(sent.filter((c) => c.type === 'project_add')[1].args).toMatchObject({ name: 'Invite only', access: { visibility: 'restricted' } });
 });
 
-test('a personal project offers Restricted and Public, not Team (#194)', async ({ page }) => {
+test('a personal project offers Restricted only: there is no Team and no Public choice (#194)', async ({ page }) => {
   const sent = await openWorkspaceAccount(page);
   await page.getByRole('button', { name: 'Add project' }).first().click();
   const sheet = page.getByRole('dialog', { name: 'New project' });
-  await expect(access(sheet).locator('strong')).toHaveText(['Restricted', 'Public']);
+  await expect(access(sheet).locator('strong')).toHaveText(['Restricted']);
   await expect(access(sheet).getByRole('radio', { name: 'Restricted' })).toBeChecked();
-  await access(sheet).getByRole('radio', { name: 'Public' }).click();
-  await expect(sheet).toContainText('Anyone with the link can see it.');
-  await sheet.getByRole('textbox', { name: 'Project name' }).fill('Shared link');
+  await sheet.getByRole('textbox', { name: 'Project name' }).fill('Just mine');
   await sheet.getByRole('button', { name: 'Add project', exact: true }).click();
-  await expect.poll(() => sent.find((c) => c.type === 'project_add')?.args.access).toEqual({ visibility: 'public' });
+  await expect.poll(() => sent.some((c) => c.type === 'project_add')).toBe(true);
+  const args = sent.find((c) => c.type === 'project_add')!.args as { access?: { visibility?: string } };
+  expect(args.access?.visibility ?? 'restricted').toBe('restricted');
 });
 
 test('editing a project changes its access only when the choice changes (#194)', async ({ page }) => {
@@ -283,7 +283,7 @@ test('editing a project changes its access only when the choice changes (#194)',
 test('a value Todoist added that this app does not know is shown as it is, and kept (#194)', async ({ page }) => {
   const sent = await openWorkspaceAccount(page);
   const sheet = await editProject(page, 'Odd one');
-  await expect(access(sheet).locator('strong')).toHaveText(['Restricted', 'Team', 'Public', 'organisation']);
+  await expect(access(sheet).locator('strong')).toHaveText(['Restricted', 'Team', 'organisation']);
   await expect(access(sheet).getByRole('radio', { name: 'organisation' })).toBeChecked();
   await sheet.getByRole('textbox', { name: 'Project name' }).fill('Odd one out');
   await sheet.getByRole('button', { name: 'Save' }).click();
@@ -303,28 +303,15 @@ test('moving a project to another workspace hides the choice, since it takes tha
   await expect(access(sheet).getByRole('radio', { name: 'Restricted' })).toBeChecked();
 });
 
-test('when Todoist refuses Public, the person is told and the sheet does not pretend (#194)', async ({ page }) => {
-  await openWorkspaceAccount(page, { refuse: 'Feature disabled' });
-  await page.getByRole('button', { name: 'Add project' }).first().click();
-  const sheet = page.getByRole('dialog', { name: 'New project' });
-  await access(sheet).getByRole('radio', { name: 'Public' }).click();
-  await sheet.getByRole('textbox', { name: 'Project name' }).fill('Not allowed');
-  await sheet.getByRole('button', { name: 'Add project', exact: true }).click();
-  await expect(page.locator('.toast', { hasText: 'Feature disabled' })).toBeVisible();
-  await expect(page.locator('.sidebar .navitem', { hasText: 'Not allowed' })).toHaveCount(0);
-});
-
-test('each choice has its mark: a lock, the workspace picture, a globe, and a sentence under its title (#194)', async ({ page }) => {
+test('each choice has its mark: a lock, the workspace picture, and a sentence under its title (#194)', async ({ page }) => {
   await openWorkspaceAccount(page);
   const sheet = await editProject(page, 'Client work');
   const tiles = access(sheet).getByRole('radio');
-  await expect(tiles).toHaveCount(3);
+  await expect(tiles).toHaveCount(2);
   await expect(tiles.nth(0).locator('.accessmark svg')).toBeVisible();
   await expect(tiles.nth(1).locator('.accessmark img')).toHaveAttribute('src', LOGO);
-  await expect(tiles.nth(2).locator('.accessmark svg')).toBeVisible();
   await expect(tiles.nth(0)).toContainText('Only the people you invite to the project.');
   await expect(tiles.nth(1)).toContainText('Everyone in the workspace can see and edit it.');
-  await expect(tiles.nth(2)).toContainText('Anyone with the link can see it.');
   // Tall enough for a sentence, not a thin toggle.
   expect((await tiles.nth(1).boundingBox())!.height).toBeGreaterThan(90);
 });
@@ -348,7 +335,7 @@ test('acknowledged changelog stays closed after stale settings sync and reload',
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Got it' }).click();
   await expect(dialog).toHaveCount(0);
-  await page.route('https://api.todoist.com/api/v1/sync', async (route) => {
+  await page.route('**/api/v1/sync', async (route) => {
     await route.fulfill({ json: { full_sync: false, sync_token: 'stale', sync_status: {}, project_notes: [{
       id: 'old-settings', project_id: 'inbox', item_id: null, is_deleted: false, posted_at: '2026-10-14T00:00:00Z',
       content: 'Enhanced for Todoist · settings (edited by the app, please leave as is)\n\n' + JSON.stringify({ savedAt: Date.now() + 60000, seenVersion: '2.6.0', onboarded: true, setupDone: true, pomodoroAsked: true, estimateStorage: 'tag', hireNoteSeen: true }),

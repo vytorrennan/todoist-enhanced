@@ -23,7 +23,7 @@ async function seed(page: Page) {
     };
     for (let i = 0; i < 5; i++) items[`cal-all-${i}`] = { ...base, id: `cal-all-${i}`, content: `All day ${i}`, due: due() };
     store.setState({ snapshot: { ...state.snapshot, items, user: { ...state.snapshot.user, start_day: 1 } },
-      prefs: { ...state.prefs, estimateStorage: 'tag', views: {} }, hireNote: false });
+      prefs: { ...state.prefs, estimateStorage: 'tag', views: {} } });
   });
 }
 async function openCalendar(page: Page, view = 'inbox') {

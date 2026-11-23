@@ -1,3 +1,4 @@
+import { readOnlyProject } from '@/domain/renameLabel';
 /** Projects, sections and labels: creating, ordering, nesting, archiving, deleting. */
 import { labelRenameError, cleanLabelName, renamedLabelSnapshot } from '@/domain/renameLabel';
 import { command, type Command, moveItem, newUuid, updateItem } from '@/api/commands';
@@ -121,6 +122,7 @@ export const createStructureSlice: Slice<StructureSlice> = (_set, get) => ({
            the rows from showing it until the next read. */
         const items = { ...snapshot.items };
         for (const [itemId, item] of Object.entries(items)) {
+          if (readOnlyProject(snapshot, item.project_id)) continue;
           if (item.labels.some((l) => l.toLowerCase() === name)) {
             items[itemId] = { ...item, labels: item.labels.filter((l) => l.toLowerCase() !== name) };
           }
@@ -288,6 +290,8 @@ export const createStructureSlice: Slice<StructureSlice> = (_set, get) => ({
     const project = get().snapshot.projects[id];
     if (!project || (project.workspace_id ?? null) === workspaceId) return;
     const before = project.workspace_id ?? null;
+    // Read before the move is applied: Undo depends on how the branch was, not how the move left it.
+    const current = get().snapshot;
     /* A project that changes space leaves its parent behind: the branch it was in does not exist there. */
     const patch = (to: string | null) => (snapshot: Snapshot): Snapshot => {
       const own = snapshot.projects[id];
@@ -302,14 +306,25 @@ export const createStructureSlice: Slice<StructureSlice> = (_set, get) => ({
       to ? { project_id: id, workspace_id: to } : { project_id: id },
     );
     await get().apply([move(workspaceId)], patch(workspaceId));
+    // A refused move is put back by the write itself: only a move that stayed is announced.
+    if ((get().snapshot.projects[id]?.workspace_id ?? null) !== (workspaceId ?? null)) return;
+    // Undo puts back the space only, so it is offered only when that is the whole of the move: a top-level, unfiled
+    // branch whose projects are all restricted. A restricted project holds no workspace grants, so moving it back
+    // restores its access; the parent and folder a branch came from are not restored, so those branches get no Undo.
+    const branch = (root: string): string[] => [root, ...Object.values(current.projects)
+      .filter((other) => other.parent_id === root).flatMap((other) => branch(other.id))];
+    const undoable = !project.parent_id && !project.folder_id
+      && branch(id).every((member) => (current.projects[member]?.access?.visibility ?? 'restricted') === 'restricted');
+    // Announced as moved only once nothing is waiting to reach the server; until then it is a request.
+    const delivered = get().pendingCount === 0 && get().syncState !== 'offline';
     get().toast(
-      translate(get().prefs.locale, 'project.movedToSpace', {
+      translate(get().prefs.locale, delivered ? 'project.movedToSpace' : 'project.moveRequested', {
         name: project.name,
         space: workspaceId
           ? get().snapshot.workspaces[workspaceId]?.name ?? ''
           : translate(get().prefs.locale, 'nav.myProjects'),
       }),
-      () => void get().apply([move(before)], patch(before)),
+      undoable ? () => void get().apply([move(before)], patch(before)) : undefined,
     );
   },
   async createProject(name, color, workspaceId = null, anchor = null, extra = {}) {

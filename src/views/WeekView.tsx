@@ -3,7 +3,6 @@ import { stepLabel, type Step } from '@/domain/steps';
 import { CalendarSurface } from '@/components/CalendarSurface';
 import { pageClass } from '@/domain/pageLayout';
 import { InsightsButton } from '@/components/InsightsButton';
-import { HireNote } from '@/components/HireNote';
 import { useEffect, useMemo, useState } from 'react';
 import { addDays, startOfDay } from 'date-fns';
 import { DayPicker, dayTitle } from '@/components/DayNav';
@@ -83,7 +82,6 @@ function WeekBody({
   const { snapshot, items, childrenOf } = useData(scope === 'today' ? 'today' : 'week');
   const prefs = useStore((s) => s.prefs);
   const updateMany = useStore((s) => s.updateMany);
-  const hireNoteOpen = useStore((s) => s.hireNote);
   const confirm = useConfirm();
   /* Two pages, two sets of display preferences: a filter set on Today has no
      business following you to the rest of the week. */
@@ -217,13 +215,12 @@ function WeekBody({
 
   /* Whether one of the groups below is drawn with its own "Add task" line. */
   const hasAddLine = (scope !== 'anytime' && (
-    (prefs.showQuickGroup && groups.quick.length > 0) || groups.untimed.length > 0 || groups.timed.length > 0 || hireNoteOpen
+    (prefs.showQuickGroup && groups.quick.length > 0) || groups.untimed.length > 0 || groups.timed.length > 0
   )) || (scope !== 'today' && groups.anytime.length > 0);
 
   return (
     <div className={pageClass(current)}>
       <PageHeader
-        hireNote={current.mode === 'board'}
         title={scope === 'today' && dayNav ? <>{title}{dayNav}</> : title}
         actions={
           <>
@@ -249,7 +246,7 @@ function WeekBody({
         onUnestimated={onUnestimated}
       />}
 
-      {current.mode === 'list' && scoped.length === 0 && !hireNoteOpen ? (
+      {current.mode === 'list' && scoped.length === 0 ? (
         <EmptyState view={scope === 'today' ? 'today' : 'week'} onAdd={() => onAddTaskTo(placementFor(scope === 'today' ? here : { kind: 'anytime' }))} />
       ) : current.mode === 'calendar' ? (
         <CalendarSurface key={viewKey} viewKey={viewKey} items={items} onOpen={onOpen} onAddTaskTo={onAddTaskTo} />
@@ -297,8 +294,6 @@ function WeekBody({
             title={day ? dayTitle(offset, locale, t) : t('group.untimed')}
             titleExtra={scope === 'all' ? dayNav : undefined}
             items={sortedGroup(groups.untimed)}
-            lead={hireNoteOpen ? <HireNote /> : undefined}
-            keepWhenEmpty={hireNoteOpen}
             childrenOf={childrenOf}
             onOpen={onOpen}
             reorderable={byHand}
@@ -346,7 +341,6 @@ function WeekBody({
       ) : (
         <ModeSurface
           items={scoped}
-          firstGroupLead={hireNoteOpen ? <HireNote /> : undefined}
           childrenOf={childrenOf}
           mode={current.mode}
           group={current.group}

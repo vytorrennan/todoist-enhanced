@@ -9,8 +9,8 @@ const { version: VERSION } = JSON.parse(readFileSync(new URL('../package.json', 
 
 test('estimate conversion previews, converts and becomes idempotent in both directions', async ({ demo: page }) => {
   await go(page, '#/settings');
-  await page.getByRole('radio', { name: 'As a Todoist duration', exact: true }).click();
-  await expect(page.getByRole('radio', { name: 'As a Todoist duration', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: 'As the task’s duration', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'As the task’s duration', exact: true })).toHaveAttribute('aria-checked', 'true');
   await page.screenshot({ path: '../../outputs/estimate-storage-1.20.png' });
   await page.getByRole('button', { name: /Convert \d+ open estimates to durations/ }).click();
   const preview = page.getByRole('dialog', { name: 'Preview estimate conversion' });
@@ -30,7 +30,7 @@ test('estimate conversion previews, converts and becomes idempotent in both dire
 
 test('shorthand creates an estimated task in duration mode without asking the demo again', async ({ demo: page }) => {
   await go(page, '#/settings');
-  await page.getByRole('radio', { name: 'As a Todoist duration', exact: true }).click();
+  await page.getByRole('radio', { name: 'As the task’s duration', exact: true }).click();
   await go(page, '#/inbox');
   await page.keyboard.press('q');
   await page.locator('.composer-name').fill('Duration sample (25)');
@@ -45,7 +45,7 @@ test('storage and calendar warnings stay visible on a phone', async ({ demo: pag
   await page.setViewportSize({ width: 390, height: 844 });
   await go(page, '#/settings');
   await expect(page.getByText('Estimates stay independent from calendar blocks. Works on every plan.')).toBeVisible();
-  await page.getByRole('radio', { name: 'As a Todoist duration', exact: true }).click();
+  await page.getByRole('radio', { name: 'As the task’s duration', exact: true }).click();
   await expect(page.getByText(/On timed tasks, editing it resizes the calendar block/)).toBeVisible();
 });
 
@@ -83,7 +83,7 @@ test('a new tag can be created and attached from task details', async ({ demo: p
 
 accountTest('initial choice offers conversion, with verified and pending rows scoped to the conversion', async ({ page }) => {
   const tasks = Array.from({ length: 45 }, (_, i) => item({ id: `task-${i}`, content: `Estimate ${i}`, labels: ['est-25'] }));
-  await page.route('https://api.todoist.com/api/v1/**', async (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/sync')) {
       const form = new URLSearchParams(route.request().postData() ?? '');
@@ -108,7 +108,7 @@ accountTest('initial choice offers conversion, with verified and pending rows sc
   });
   await page.goto('/');
   await page.evaluate(async (version) => {
-    localStorage.setItem('tde.token', 'fictitious-test-token-only');
+    localStorage.setItem('tde.session', 'fictitious-test-token-only');
     localStorage.setItem('onboarded', JSON.stringify(['account-test']));
     const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open('todoist-enhancements'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
     const tx = db.transaction('prefs', 'readwrite');
@@ -119,9 +119,9 @@ accountTest('initial choice offers conversion, with verified and pending rows sc
   await page.reload();
   const choice = page.getByRole('dialog', { name: 'Where to store estimates', exact: true });
   await expect(choice).toBeVisible();
-  await expect(choice.getByRole('radio', { name: 'As a Todoist duration', exact: true })).toContainText('Recommended');
-  await choice.getByRole('radio', { name: 'As a Todoist duration', exact: true }).click();
-  await expect(choice.getByRole('radio', { name: 'As a Todoist duration', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await expect(choice.getByRole('radio', { name: 'As the task’s duration', exact: true })).toContainText('Recommended');
+  await choice.getByRole('radio', { name: 'As the task’s duration', exact: true }).click();
+  await expect(choice.getByRole('radio', { name: 'As the task’s duration', exact: true })).toHaveAttribute('aria-checked', 'true');
   await choice.getByRole('button', { name: 'Save and preview conversion' }).click();
   const preview = page.getByRole('dialog', { name: 'Preview estimate conversion', exact: true });
   await preview.getByRole('button', { name: 'Convert these tasks' }).click();

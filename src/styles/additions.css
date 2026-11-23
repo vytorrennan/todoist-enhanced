@@ -1806,3 +1806,20 @@ html.desktop-app .macapp,html.desktop-app .macapp-line{display:none}
 /* A standing title occupies the checkbox track in the task view too. */
 .detail-headline[data-uncompletable] > .detail-content,
 .detail-section .subtaskrow[data-uncompletable] > :is(.subtaskbody, .namefield) { grid-column: span 2; }
+
+/* The sign-in form: email, password, and the account it opens. */
+.connect-modes{width:100%;margin-top:var(--s2)}
+.connect-modes button{flex:1}
+.connect-account{display:grid;gap:10px;margin-top:var(--s2)}
+.connect-account label{display:grid;gap:4px;font-size:var(--fs-13);color:var(--muted);font-weight:600}
+.connect-account input{height:40px;border:1px solid var(--border-strong);border-radius:10px;padding:0 12px;background:var(--surface);color:var(--text);font:inherit;font-weight:400;font-size:15px}
+.connect-account input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.connect-hint{color:var(--muted);font-size:var(--fs-13)}
+
+/* Workspaces in Settings: a row per form, a heading per workspace. */
+.wsettings{display:grid;gap:14px}
+.wsrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.wsrow input{flex:1 1 220px;min-width:0;height:36px;border:1px solid var(--border-strong);border-radius:10px;padding:0 12px;background:var(--surface);color:var(--text);font:inherit}
+.wsworkspace{display:grid;gap:8px;border-top:1px solid var(--border);padding-top:12px}
+.wssubhead{margin:6px 0 0;font-size:var(--fs-13);color:var(--muted)}
+.wsfolders{margin:0;padding-left:18px}

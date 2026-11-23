@@ -6,7 +6,7 @@ import { useT } from '@/hooks/useT';
 import { useStore } from '@/store/store';
 import { useConfirm } from './overlays/Confirm';
 import { usePhoneBehaviour } from '@/hooks/useTouchLayout';
-import { copyText, isTemporaryId, todoistSectionUrl } from '@/api/links';
+import { copyText, isTemporaryId, sectionLink } from '@/api/links';
 import { projectTree, type ProjectNode } from '@/store/selectors';
 
 export interface SectionMenuProps {
@@ -139,7 +139,7 @@ export function SectionMenu({ sectionId, name, projectId, onDelete, onEdit, anch
 
   const copyLink = async () => {
     close();
-    const ok = await copyText(todoistSectionUrl(sectionId));
+    const ok = await copyText(sectionLink(useStore.getState().snapshot.sections[sectionId]?.project_id ?? projectId, sectionId));
     toast(ok ? t('section.linkCopied', { name }) : t('section.linkNotCopied'));
   };
 

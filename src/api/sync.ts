@@ -9,7 +9,7 @@ import type {
 export const SYNC_RESOURCE_TYPES = [
   'items', 'projects', 'sections', 'labels', 'notes', 'project_notes',
   'reminders', 'user', 'collaborators', 'workspaces', 'live_notifications',
-  'filters', 'completed_info',
+  'filters', 'completed_info', 'folders', 'collaborator_states',
 ] as const;
 
 export interface SyncResponse {
@@ -65,6 +65,8 @@ export async function sync(syncToken: string, signal?: AbortSignal, knownWorkspa
   if (!response || typeof response.sync_token !== 'string' || !response.sync_token || typeof response.full_sync !== 'boolean') {
     throw new Error('Todoist sent an invalid sync response');
   }
+  // The answer carries the folders itself, so a full read needs no separate scan of every workspace.
+  if (Array.isArray(response.folders)) return response;
   // A new session/full sync and workspace changes always refresh immediately.
   // Folders are read again ten minutes after the last attempt, failed or not.
   if (!response.full_sync && syncToken !== '*' && !response.workspaces?.length && lastFolderRefresh && Date.now() - lastFolderRefresh < FOLDER_REFRESH_INTERVAL_MS) {
@@ -242,6 +244,7 @@ export function resolveTempIds(snapshot: Snapshot, mapping: Record<string, strin
   });
   const labels = settle(snapshot.labels, (label) => label);
   const filters = snapshot.filters ? settle(snapshot.filters, (filter) => filter) : undefined;
+  const folders = snapshot.folders ? settle(snapshot.folders, (folder) => folder) : undefined;
   const notes = settle(snapshot.notes, (note) => {
     const item = real(note.item_id);
     const project = real(note.project_id);
@@ -250,7 +253,7 @@ export function resolveTempIds(snapshot: Snapshot, mapping: Record<string, strin
       : { ...note, item_id: item, project_id: project };
   });
 
-  return { ...snapshot, items, projects, sections, labels, notes, ...(filters ? { filters } : {}) };
+  return { ...snapshot, items, projects, sections, labels, notes, ...(filters ? { filters } : {}), ...(folders ? { folders } : {}) };
 }
 
 /**

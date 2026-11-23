@@ -155,6 +155,8 @@ export async function sendCommands(
              not carry means that change is never read (#467). */
           resource_types: JSON.stringify(SYNC_RESOURCE_TYPES),
           commands: JSON.stringify(batch.map(({ estimateMinutes: _estimate, ...cmd }) => cmd)),
+          // The account these changes were made in: the server refuses them for any other.
+          ...(account.userId ? { account_id: account.userId } : {}),
         },
       });
       // A 200 response is not an acknowledgement of commands it does not name.
@@ -233,7 +235,7 @@ export async function sendCommands(
         at -= 1;
         continue;
       }
-      if (error instanceof ApiError && error.isRefusal && !error.isInvalidSyncToken) {
+      if (error instanceof ApiError && error.isRefusal && !error.isInvalidSyncToken && !error.isAccountChanged) {
         for (const cmd of batch) result.failures.push({ uuid: cmd.uuid, error: error.detail });
       } else {
         if (at === 0) throw error;

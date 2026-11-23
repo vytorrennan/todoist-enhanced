@@ -421,6 +421,18 @@ export function revertRefused(
       next.notifications = notifications;
       continue;
     }
+    /* A folder that was refused is not kept as a placeholder, here or on the device. */
+    if (cmd.type.startsWith('folder_')) {
+      const folders = { ...(next.folders ?? {}) };
+      if (cmd.temp_id) delete folders[cmd.temp_id];
+      for (const id of idsTouchedBy(cmd)) {
+        const was = before.folders?.[id];
+        if (was) folders[id] = was;
+        else delete folders[id];
+      }
+      next.folders = folders;
+      continue;
+    }
     /* Filters may be missing from an old snapshot, so they are put back on their own. */
     if (cmd.type.startsWith('filter_')) {
       const filters = { ...(next.filters ?? {}) };

@@ -6,7 +6,7 @@ import { useConfirm } from './overlays/Confirm';
 import { useT } from '@/hooks/useT';
 import { useMenuKeys } from '@/hooks/useMenuKeys';
 import { useStore } from '@/store/store';
-import { copyText, isTemporaryId, todoistTaskUrl } from '@/api/links';
+import { copyText, isTemporaryId, taskLink } from '@/api/links';
 import { uploadAttachment } from '@/api/uploads';
 import { avatarUrl } from '@/domain/colors';
 import { formatRelativeDay } from '@/domain/dates';
@@ -302,7 +302,7 @@ function CommentRow({ note, itemId }: { note: Note; itemId: string }) {
                   className="opt" role="menuitem"
                   onClick={() => {
                     setMenu(null);
-                    void copyText(`${todoistTaskUrl(itemId)}#comment-${note.id}`)
+                    void copyText(taskLink(useStore.getState().snapshot.items[itemId]?.project_id ?? '', itemId))
                       .then((ok) => toast(t(ok ? 'task.linkCopied' : 'task.linkNotCopied')));
                   }}
                 >

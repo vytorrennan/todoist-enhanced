@@ -18,11 +18,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('setCommentReaction', () => {
-  it('adds through the reactions endpoint and keeps what Todoist answers', async () => {
+  it('adds through the reactions endpoint and keeps what the server answers', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: 'c1', reactions: { '👍': ['me'] } }), { status: 200 }));
     await expect(setCommentReaction('c1', '👍', true)).resolves.toEqual({ '👍': ['me'] });
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-    expect(String(url)).toBe('https://api.todoist.com/api/v1/comments/c1/reactions');
+    expect(new URL(String(url)).pathname).toBe('/api/v1/comments/c1/reactions');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ reaction: '👍' });
   });
@@ -31,11 +31,11 @@ describe('setCommentReaction', () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
     await expect(setCommentReaction('c1', '👍', false)).resolves.toBeUndefined();
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-    expect(String(url)).toBe('https://api.todoist.com/api/v1/comments/c1/reactions/remove');
+    expect(new URL(String(url)).pathname).toBe('/api/v1/comments/c1/reactions/remove');
     expect(JSON.parse(init.body as string)).toEqual({ reaction: '👍' });
   });
 
-  it('throws when Todoist refuses, so the caller can roll back', async () => {
+  it('throws when the server refuses, so the caller can roll back', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'Not found' }), { status: 404 }));
     await expect(setCommentReaction('c1', '👍', true)).rejects.toThrow();
   });

@@ -160,6 +160,8 @@ export interface Workspace {
   is_archived?: boolean;
   id: string;
   name: string;
+  /** What the signed-in person is in it: `ADMIN`, `MEMBER` or `GUEST`. */
+  role?: string;
   logo_big?: string | null;
   /** `default_access_level` is what a project gets when its creator does not choose. */
   properties?: { default_access_level?: string } | null;

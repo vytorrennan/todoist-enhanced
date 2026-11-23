@@ -2,55 +2,77 @@ import { PrivacyInformation } from '@/components/PrivacyInformation';
 import { useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { MacAppLine } from '@/components/MacApp';
-import { TodoistMark } from '@/components/TodoistMark';
 import { WorkspacePreview } from '@/components/WorkspacePreview';
 import { Overlay } from '@/components/overlays/Overlay';
 import { useT } from '@/hooks/useT';
 import { useStore } from '@/store/store';
-import { looksLikeToken } from '@/api/auth';
-import { beginSignIn, builtForElsewhere } from '@/api/oauth';
+import { type AccountFailure, type AccountProblem, createAccount, isFailure, signInWithPassword } from '@/api/account';
 import type { TranslationKey } from '@/i18n';
-import { AUTHOR, GITHUB_URL, TODOIST_DEVELOPER_URL, VERSION } from '@/app-info';
-
+import { AUTHOR, GITHUB_URL, VERSION } from '@/app-info';
 
 /**
- * The first screen: connecting the account.
+ * The first screen: signing in to the account on this server, or creating one.
  *
- * Signing in with Todoist comes first: one button, Todoist's own consent
- * page, and back here connected, with nothing to find or copy. A personal
- * API token still works, one click further down, for anyone who prefers it.
- * Whatever the way in, the credential stays on the device and goes nowhere
- * but Todoist, which is why the privacy note sits right under the buttons.
+ * The password goes to the server once, to get a session; the session is what
+ * the device keeps. Whatever the way in, the session stays on the device and
+ * goes nowhere but this server, which is why the privacy note sits right under
+ * the form.
  */
+
+const PROBLEM_KEY: Record<AccountProblem, TranslationKey> = {
+  'invalid-credentials': 'connect.problem.invalidCredentials',
+  'email-taken': 'connect.problem.emailTaken',
+  'weak-password': 'connect.problem.weakPassword',
+  'invalid-email': 'connect.problem.invalidEmail',
+  'too-many-attempts': 'connect.problem.tooManyAttempts',
+  'signup-closed': 'connect.problem.signupClosed',
+  offline: 'connect.problem.offline',
+  server: 'connect.problem.server',
+};
+
 export function ConnectView() {
   const { t } = useT();
   const connect = useStore((s) => s.connect);
   const startDemo = useStore((s) => s.startDemo);
   const setLocale = useStore((s) => s.setLocale);
   const locale = useStore((s) => s.prefs.locale);
-
-  const signInError = useStore((s) => s.signInError);
   const syncError = useStore((s) => s.syncError);
 
-  const [token, setToken] = useState('');
-  const [status, setStatus] = useState<'idle' | 'checking' | 'invalid' | 'malformed'>('idle');
-  const [leaving, setLeaving] = useState(false);
+  const [mode, setMode] = useState<'signIn' | 'create'>('signIn');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<AccountFailure | null>(null);
+  const [localFailure, setLocalFailure] = useState<AccountProblem | null>(null);
   const [privacyOpen, setPrivacyOpen] = useState(false);
-  /** The address this copy was built for, once a sign-in has been refused for it. */
-  const [elsewhere, setElsewhere] = useState<string | null>(null);
-  /** Site storage is blocked, so a sign-in through Todoist's page cannot come back. */
-  const [storageBlocked, setStorageBlocked] = useState(false);
-  // The token route opens by itself when it is what failed, or what the sign-in fell back to.
-  const [tokenOpen, setTokenOpen] = useState(signInError === 'failed');
+
+  const shownProblem: AccountProblem | null = localFailure ?? (failure?.problem ?? null);
 
   async function submit() {
-    if (!looksLikeToken(token)) {
-      setStatus('malformed');
+    setFailure(null);
+    setLocalFailure(null);
+    const address = email.trim();
+    if (!address) { setLocalFailure('invalid-email'); return; }
+    if (!password) { setLocalFailure('invalid-credentials'); return; }
+    setBusy(true);
+    const result = mode === 'signIn'
+      ? await signInWithPassword(address, password)
+      : await createAccount({
+        email: address,
+        password,
+        fullName: fullName.trim(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        lang: locale,
+      });
+    if (isFailure(result)) {
+      setBusy(false);
+      setFailure(result);
       return;
     }
-    setStatus('checking');
-    const ok = await connect(token);
-    if (!ok) setStatus('invalid');
+    const ok = await connect(result.token);
+    setBusy(false);
+    if (!ok) setLocalFailure('server');
   }
 
   const legal = t('connect.legal', { author: AUTHOR }).split(AUTHOR);
@@ -82,88 +104,83 @@ export function ConnectView() {
 
       <main className="signin-main">
         <div className="connect-form">
-        <h1>{t('connect.login')}</h1>
-        <p className="connect-intro">{t('connect.intro')}</p>
+          <h1>{mode === 'signIn' ? t('connect.login') : t('connect.createTitle')}</h1>
+          <p className="connect-intro">{t('connect.intro')}</p>
 
-        <button className="btn primary lg connect-submit"
-          disabled={leaving}
-          onClick={() => {
-            const expected = builtForElsewhere();
-            if (expected) { setElsewhere(expected); setTokenOpen(true); return; }
-            setLeaving(true);
-            void beginSignIn().then((left) => {
-              if (left) return;
-              setLeaving(false);
-              setStorageBlocked(true);
-              setTokenOpen(true);
-            });
-          }}
-        >
-          {leaving ? t('connect.oauthLeaving') : (() => {
-            // "Connect with Todoist": the mark goes in front of the word.
-            const [before, after] = t('connect.oauth').split('Todoist');
-            return after === undefined ? t('connect.oauth') : <>{before}<TodoistMark /> Todoist{after}</>;
-          })()}
-        </button>
-        {syncError === 'storage-signout' && <p className="connect-error" role="alert">{t('sync.signOutStorageFailed')}</p>}
-        {syncError === 'invalid' && <p className="connect-error" role="alert">{t('connect.sessionEnded')}</p>}
-        {signInError === 'denied' && <p className="connect-error">{t('connect.oauthDenied')}</p>}
-        {signInError === 'failed' && <p className="connect-error">{t('connect.oauthFailed')}</p>}
-        {storageBlocked && <p className="connect-error" role="alert">{t('connect.storageBlocked')}</p>}
-        {elsewhere && (
-          <p className="connect-error">
-            {t('connect.oauthElsewhere', {
-              expected: elsewhere,
-              here: `${window.location.origin}${window.location.pathname}`,
-            })}
-          </p>
-        )}
+          {(
+            <div className="connect-modes seg2" role="group" aria-label={t('connect.modeLabel')}>
+              <button type="button" aria-pressed={mode === 'signIn'} onClick={() => { setMode('signIn'); setFailure(null); setLocalFailure(null); }}>
+                {t('connect.modeSignIn')}
+              </button>
+              <button type="button" aria-pressed={mode === 'create'} onClick={() => { setMode('create'); setFailure(null); setLocalFailure(null); }}>
+                {t('connect.modeCreate')}
+              </button>
+            </div>
+          )}
 
-        <button className="btn soft lg connect-demo" onClick={startDemo} aria-label={t('connect.demoInstead')}>
-          {/* The whole sentence needs two lines on a phone; the short one needs one. */}
-          <span className="demo-long">{t('connect.demoInstead')}</span>
-          <span className="demo-short">{t('connect.demoShort')}</span>
-        </button>
-        <MacAppLine />
-
-        <details
-          className="connect-token"
-          open={tokenOpen}
-          onToggle={(e) => setTokenOpen((e.currentTarget as HTMLDetailsElement).open)}
-        >
-          <summary>{t('connect.useToken')}</summary>
-
-          <label className="sr" htmlFor="token">{t('connect.tokenLabel')}</label>
-          <input
-            id="token"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={t('connect.tokenPlaceholder')}
-            value={token}
-            onChange={(e) => { setToken(e.target.value); setStatus('idle'); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') { void submit(); } }}
-          />
-
-          {status === 'invalid' && <p className="connect-error">{t('connect.invalid')}</p>}
-          {status === 'malformed' && <p className="connect-error">{t('connect.malformed')}</p>}
-
-          <button className="btn lg connect-token-submit"
-            disabled={status === 'checking'}
-            onClick={() => void submit()}
+          <form
+            className="connect-account"
+            onSubmit={(event) => { event.preventDefault(); if (!busy) void submit(); }}
           >
-            {status === 'checking' ? t('connect.checking') : t('connect.submit')}
+            <label>
+              <span>{t('connect.email')}</span>
+              <input
+                type="email"
+                name="email"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            {mode === 'create' && (
+              <label>
+                <span>{t('connect.name')}</span>
+                <input
+                  type="text"
+                  name="name"
+                  autoComplete="name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                />
+              </label>
+            )}
+            <label>
+              <span>{t('connect.password')}</span>
+              <input
+                type="password"
+                name="password"
+                autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+            {mode === 'create' && <small className="connect-hint">{t('connect.passwordHint')}</small>}
+
+            <button type="submit" className="btn primary lg connect-submit" disabled={busy}>
+              {busy
+                ? t('connect.working')
+                : mode === 'signIn' ? t('connect.submitSignIn') : t('connect.submitCreate')}
+            </button>
+          </form>
+
+          {syncError === 'storage-signout' && <p className="connect-error" role="alert">{t('sync.signOutStorageFailed')}</p>}
+          {syncError === 'invalid' && <p className="connect-error" role="alert">{t('connect.sessionEnded')}</p>}
+          {shownProblem && (
+            <p className="connect-error" role="alert">
+              {t(PROBLEM_KEY[shownProblem])}
+              {failure?.retryAfter ? ` ${t('connect.problem.retryIn', { minutes: Math.ceil(failure.retryAfter / 60) })}` : ''}
+            </p>
+          )}
+
+          <button className="btn soft lg connect-demo" onClick={startDemo} aria-label={t('connect.demoInstead')}>
+            {/* The whole sentence needs two lines on a phone; the short one needs one. */}
+            <span className="demo-long">{t('connect.demoInstead')}</span>
+            <span className="demo-short">{t('connect.demoShort')}</span>
           </button>
-
-          <a
-            className="connect-apikey"
-            href={TODOIST_DEVELOPER_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {t('connect.apiKey')}
-          </a>
-        </details>
+          <MacAppLine />
+        </div>
 
         {/* A phone has room for one line; the rest is a sheet away (#292). */}
         <p className="connect-privacy-line">
@@ -186,7 +203,6 @@ export function ConnectView() {
         <p className="connect-legal">
           {legal[0]}<strong>{AUTHOR}</strong>{legal[1]}
         </p>
-        </div>
 
         <footer className="signin-brand">
           <strong className="signin-brand-name">{t('connect.appName')}</strong>

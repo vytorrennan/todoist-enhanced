@@ -14,7 +14,6 @@ import { en } from '@/i18n/en';
 import { plainTitle } from '@/domain/markdown';
 import { notificationGlyph, notificationList, sentenceKey, type NotificationView } from '@/domain/notifications';
 import { formatTimeAgo } from '@/domain/dates';
-import { TodoistMark } from '../TodoistMark';
 
 const bold = (text: string): string => `\uE000${text}\uE001`;
 
@@ -37,7 +36,7 @@ function NotificationAvatar({ n }: { n: NotificationView }) {
   return (
     <span className="notifav-wrap" aria-hidden="true">
       {n.fromTodoist ? (
-        <span className="notifav todoist"><TodoistMark className="notifmark" /></span>
+        <span className="notifav"><Icon name="bell" size="sm" /></span>
       ) : n.image && !broken ? (
         <img className="notifav" src={n.image} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
       ) : (

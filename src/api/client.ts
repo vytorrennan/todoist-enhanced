@@ -5,10 +5,17 @@ import { networkTurn, recordNetworkAttempt } from './networkPolicy';
 import { auth } from './auth';
 import { accountOnDevice } from '@/lib/accountWatch';
 
-export const API_BASE = 'https://api.todoist.com/api/v1';
+/**
+ * Where the server answers: the same address as the app, under `/api/v1`. The
+ * development server proxies it to the local backend (vite.config.ts).
+ */
+export const API_BASE = '/api/v1';
 
-/** What Todoist puts in the body of a refusal. */
-interface TodoistErrorBody {
+/** The address a request goes to, from the page it runs on. */
+export const apiUrl = (path: string): URL => new URL(`${API_BASE}${path}`, globalThis.location?.origin ?? 'http://localhost');
+
+/** What the server puts in the body of a refusal. */
+interface ErrorBody {
   error?: string;
   error_tag?: string;
   error_code?: number;
@@ -24,17 +31,17 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 
-  private get parsedBody(): TodoistErrorBody {
-    return (this.body && typeof this.body === 'object' ? this.body : {}) as TodoistErrorBody;
+  private get parsedBody(): ErrorBody {
+    return (this.body && typeof this.body === 'object' ? this.body : {}) as ErrorBody;
   }
 
   /**
-   * The token is missing, wrong, or has been revoked.
+   * The session is missing, wrong, or has run out.
    *
-   * 401 always means that. 403 does not: Todoist also answers 403 when a
-   * command is against the rules of the account's plan, and reading that as a
-   * bad token both hid the real reason and signed the user out over it. A 403
-   * only counts as an auth failure when the body says so.
+   * 401 always means that. 403 does not: the server also answers 403 when a
+   * change is not allowed for this person's role, and reading that as a
+   * lapsed session would sign them out over a refusal. A 403 only counts as an
+   * auth failure when the body says so.
    */
   get isAuthError(): boolean {
     if (this.status === 401) return true;
@@ -45,7 +52,7 @@ export class ApiError extends Error {
   }
 
   /**
-   * Todoist has refused this and will refuse it again.
+   * The server has refused this and will refuse it again.
    *
    * A refusal is a fact about the request, not about the network, so the
    * change must be rolled back and the command dropped rather than queued to
@@ -55,11 +62,20 @@ export class ApiError extends Error {
     return this.parsedBody.error_tag === 'INVALID_SYNC_TOKEN';
   }
 
+  /**
+   * The window is signed in to another account than the one these writes were
+   * made for. Nothing ran, and the writes still belong to their own account, so
+   * they are kept in the queue rather than refused.
+   */
+  get isAccountChanged(): boolean {
+    return this.parsedBody.error_tag === 'ACCOUNT_CHANGED';
+  }
+
   get isRefusal(): boolean {
     return this.status >= 400 && this.status < 500 && this.status !== 429 && !this.isAuthError;
   }
 
-  /** What Todoist actually said, for showing to the person who asked. */
+  /** What the server actually said, for showing to the person who asked. */
   get detail(): string {
     const { error, error_tag: tag } = this.parsedBody;
     if (error) return error;
@@ -71,7 +87,7 @@ export class ApiError extends Error {
 
 export class NotConnectedError extends Error {
   constructor() {
-    super('No Todoist token is configured.');
+    super('Not signed in.');
     this.name = 'NotConnectedError';
   }
 }
@@ -86,10 +102,10 @@ export class NotConnectedError extends Error {
  */
 export const REQUEST_TIMEOUT_MS = 20_000;
 
-/** Thrown when Todoist did not answer in time. Handled like being offline. */
+/** Thrown when the server did not answer in time. Handled like being offline. */
 export class TimeoutError extends Error {
   constructor() {
-    super('Todoist did not answer in time.');
+    super('The server did not answer in time.');
     this.name = 'TimeoutError';
   }
 }
@@ -131,7 +147,7 @@ interface RequestOptions {
 }
 
 /**
- * The longest Todoist's "retry after" is obeyed for.
+ * The longest the server's "retry after" is obeyed for.
  *
  * While a sync waits, its state stays "syncing" and no other sync starts, so a
  * `Retry-After` of minutes (times three attempts) froze syncing for that long
@@ -159,11 +175,11 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
 });
 
 /**
- * One call to Todoist.
+ * One call to the server.
  *
- * Honours the `retry_after` the API sends with a 429 rather than guessing, and
- * backs off on server errors. Auth failures are never retried: the token is
- * wrong and trying again cannot fix it.
+ * Honours the `retry_after` the server sends with a 429 rather than guessing,
+ * and backs off on server errors. Auth failures are never retried: the session
+ * is wrong and trying again cannot fix it.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const session = sessionSignal();
@@ -175,16 +191,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const signal = controller.signal;
   try {
   const owner = accountOnDevice();
-  let token = await auth.getToken();
+  const token = await auth.getToken();
   if (signal.aborted) throw aborted();
   if (!token) throw new NotConnectedError();
-  let renewed = false;
 
   const {
     method = 'GET', form, json, upload, query, retries = 3, timeoutMs = REQUEST_TIMEOUT_MS,
   } = options;
 
-  const url = new URL(`${API_BASE}${path}`);
+  const url = apiUrl(path);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined && value !== '') url.searchParams.set(key, String(value));
@@ -204,13 +219,17 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     body = JSON.stringify(json);
   }
 
+  // A write names the account the window is showing. The server refuses it for any other account, so a window that is
+  // mid-switch cannot write as the account that has just been signed in.
+  if (method !== 'GET' && owner) headers['X-Account-Id'] = owner;
+
   let attempt = 0;
   for (;;) {
     // A caller that has left has nothing to wait for and nothing to send.
     if (signal?.aborted) throw aborted();
     const key = pauseKey();
     const remaining = pauseUntil(key) - Date.now();
-    if (remaining > MAX_RETRY_WAIT_MS) throw new ApiError('Todoist asked us to wait before retrying', 429);
+    if (remaining > MAX_RETRY_WAIT_MS) throw new ApiError('The server asked us to wait before retrying', 429);
     if (remaining > 0) await sleep(remaining, signal);
     // Never send a queued request after another window switches accounts.
     if (owner !== accountOnDevice()) throw new Error('Account changed while the request was waiting');
@@ -228,7 +247,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         queued.done();
         if (owner !== accountOnDevice()) throw new Error('Account changed while the request was waiting');
         const blocked = pauseUntil(key) - Date.now();
-        if (blocked > 0) throw new ApiError('Todoist asked us to wait before retrying', 429);
+        if (blocked > 0) throw new ApiError('The server asked us to wait before retrying', 429);
         const deadline = withDeadline(signal, timeoutMs);
         try {
           recordNetworkAttempt(priority);
@@ -258,17 +277,6 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       queued.done();
     }
 
-    /* A signed-in access token lasts an hour; one that ran out between the
-       check and the request is renewed once and the request tried again. */
-    if (response.status === 401 && !renewed) {
-      renewed = true;
-      const next = await auth.renewAfterRefusal(token);
-      if (next) {
-        token = next;
-        continue;
-      }
-    }
-
     if (response.ok) {
       if (response.status === 204 || !text) return undefined as T;
       try {
@@ -276,7 +284,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       } catch {
         /* Not an ApiError, so callers treat it like a network problem and try
            again later instead of reading it as a refusal. */
-        throw new Error('Todoist sent an answer that could not be read.');
+        throw new Error('The server sent an answer that could not be read.');
       }
     }
 
@@ -288,7 +296,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         parsed = text;
       }
       return new ApiError(
-        `Todoist responded ${response.status}`,
+        `The server responded ${response.status}`,
         response.status,
         parsed,
       );

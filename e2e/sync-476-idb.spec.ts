@@ -166,7 +166,7 @@ test('a stolen sync lease cannot acknowledge or replace a snapshot', async ({ pa
 });
 
 test('opens an existing version-one database without an upgrade or loss of queued work', async ({ page }) => {
-  await page.goto('/oauth/client.json');
+  await page.goto('/');
   await page.evaluate(async () => {
     await new Promise<void>((resolve, reject) => {
       const open = indexedDB.open('todoist-enhancements', 1);
@@ -238,7 +238,7 @@ test('edits from stale windows merge into the durable optimistic snapshot', asyn
 });
 
 test('an old window holding version one does not block the new application', async ({ context, page }) => {
-  await page.goto('/oauth/client.json');
+  await page.goto('/');
   await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const open = indexedDB.open('todoist-enhancements', 1);

@@ -8,7 +8,7 @@ import { useConfirm } from './overlays/Confirm';
 import { useT } from '@/hooks/useT';
 import { navigate } from '@/hooks/useRoute';
 import { useStore } from '@/store/store';
-import { copyText, todoistFilterUrl } from '@/api/links';
+import { copyText, filterLink } from '@/api/links';
 import { markerStyle } from '@/domain/colors';
 import { readProjectIcon, stripProjectIcon, withProjectIcon } from '@/domain/projectIcons';
 import type { Filter } from '@/domain/types';
@@ -116,7 +116,7 @@ export function FilterMenu({ filter, onEdit }: { filter: Filter; onEdit: () => v
         }]),
         {
           key: 'link', label: t('filters.copyLink'), icon: 'link',
-          onPick: () => void copyText(todoistFilterUrl(filter.id))
+          onPick: () => void copyText(filterLink(filter.id))
             .then((ok) => toast(t(ok ? 'task.linkCopied' : 'task.linkNotCopied'))),
         },
         {

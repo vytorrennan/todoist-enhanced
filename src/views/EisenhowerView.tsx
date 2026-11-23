@@ -1,4 +1,3 @@
-import { HireNote } from '@/components/HireNote';
 import { useMemo } from 'react';
 import { EisenhowerDisplayMenu } from '@/components/EisenhowerDisplayMenu';
 import { PageHeader } from '@/components/PageHeader';
@@ -17,7 +16,6 @@ interface EisenhowerViewProps {
 
 export function EisenhowerView({ onOpen, onUnestimated }: EisenhowerViewProps) {
   const { t } = useT();
-  const hireNoteOpen = useStore((s) => s.hireNote);
   const { snapshot, items, childrenOf } = useData('matrix');
   const prefs = useStore((s) => s.prefs);
   const view = viewPrefs(prefs, 'matrix');
@@ -39,7 +37,6 @@ export function EisenhowerView({ onOpen, onUnestimated }: EisenhowerViewProps) {
   return (
     <div className="page eisenhower-page">
       <PageHeader
-        hireNote={false}
         title={t('matrix.title')}
         load={load}
         onOpenUnestimated={load.unestimatedCount > 0 ? onUnestimated : undefined}
@@ -53,7 +50,6 @@ export function EisenhowerView({ onOpen, onUnestimated }: EisenhowerViewProps) {
         settings={settings}
         layout={prefs.eisenhowerLayout}
         onOpen={onOpen}
-        lead={hireNoteOpen ? <div className="taskwrap"><HireNote /></div> : undefined}
       />
     </div>
   );

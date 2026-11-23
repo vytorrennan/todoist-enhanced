@@ -609,7 +609,7 @@ test.describe('#175 task metadata chips', () => {
     await expect(meta.locator('.proj')).toHaveCSS('border-top-width', '0px');
   });
 
-  test('Todoist inspired is the default; Neutral greys the project and tags, and Settings and Setup agree', async ({ demo: page }) => {
+  test('Plain text is the default; Neutral greys the project and tags, and Settings and Setup agree', async ({ demo: page }) => {
     await go(page, '#/week');
     const project = () => page.locator('.screen.active .task .meta .proj').filter({ hasText: 'Vermilion' }).first();
     expect(await page.evaluate(() => document.documentElement.dataset.chips)).toBe('classic');

@@ -12,7 +12,7 @@ test('project icons retain their colour and custom icon without progress scans',
 test('opening many old projects does not request history for the sidebar', async ({ demo: page }) => {
   test.skip(process.env.PLAYWRIGHT_DEV !== '1', 'Uses development store fixture');
   let historyReads = 0;
-  await page.route('https://api.todoist.com/api/v1/**', async (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const url = route.request().url();
     if (url.includes('/tasks/completed')) historyReads++;
     await route.fulfill({ json: url.includes('/sync') ? { sync_token: 'test', full_sync: false } : { results: [], items: [], next_cursor: null } });

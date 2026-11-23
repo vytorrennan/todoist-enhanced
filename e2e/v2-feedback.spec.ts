@@ -4,11 +4,11 @@ import { test, expect, go, rows } from './demo';
 const sidebar = (page: import('@playwright/test').Page) => page.locator('.sidebar:not(.pvscale .sidebar)');
 
 base.describe('sign-in (feedback pass)', () => {
-  base('the brand line has no Todoist mark, and the token link has no accordion arrow', async ({ page }) => {
+  base('the sign-in screen is the account form, with no third-party mark', async ({ page }) => {
     await page.goto('/');
     await baseExpect(page.locator('.signin-brand-name .tdlogo')).toHaveCount(0);
-    const marker = await page.locator('.connect-token summary').evaluate((node) => getComputedStyle(node).listStyleType);
-    baseExpect(marker).toBe('none');
+    await baseExpect(page.getByLabel('Email')).toBeVisible();
+    await baseExpect(page.getByLabel('Password')).toBeVisible();
   });
 
   base('the page is exactly as tall as the window, so the brand rises with it', async ({ page }) => {

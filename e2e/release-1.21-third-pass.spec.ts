@@ -52,7 +52,7 @@ test('selected clipboard link ends before subsequent typing and undo restores se
   await page.keyboard.press('ControlOrMeta+z'); await page.keyboard.press('ControlOrMeta+z'); await expect(body.locator('.md-link')).toHaveCount(0);
 });
 test('three independent metadata choices, plain default',async({demo:page})=>{
-  await go(page,'#/settings'); const choices=page.locator('.chipschoice'); await expect(choices.getByRole('radio')).toHaveCount(3); await expect(choices.getByRole('radio',{name:'Todoist inspired'})).toHaveAttribute('aria-checked','true');
+  await go(page,'#/settings'); const choices=page.locator('.chipschoice'); await expect(choices.getByRole('radio')).toHaveCount(3); await expect(choices.getByRole('radio',{name:'Plain text'})).toHaveAttribute('aria-checked','true');
   if(process.env.REVIEW_SCREENSHOTS)await page.screenshot({path:`${process.env.REVIEW_SCREENSHOTS}/quatre-styles.png`});
   await expect(page.getByRole('button',{name:'Notepad',exact:true})).toHaveCount(0);
 });
@@ -109,7 +109,7 @@ test('metadata preview type remains the same size across styles',async({demo:pag
   await go(page,'#/settings');
   const font=()=>page.locator('.preview-task .meta > *').evaluateAll(nodes=>nodes.map(n=>getComputedStyle(n).fontSize));
   const before=await font();expect(before.length).toBeGreaterThan(0);
-  for(const name of ['Neutral','Inherited colours','Todoist inspired']){
+  for(const name of ['Neutral','Inherited colours','Plain text']){
     await page.locator('.chipschoice').getByRole('radio',{name,exact:true}).click();expect(await font()).toEqual(before);
   }
 });

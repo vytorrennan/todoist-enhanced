@@ -18,7 +18,7 @@ export function isAccessLevel(value: string): value is AccessLevel {
 
 /** The levels a project can have where it lives. */
 export function accessChoices(inWorkspace: boolean): AccessLevel[] {
-  return inWorkspace ? ['restricted', 'team', 'public'] : ['restricted', 'public'];
+  return inWorkspace ? ['restricted', 'team'] : ['restricted'];
 }
 
 /** What a new project gets when nothing is chosen: the workspace's own default, or private. */

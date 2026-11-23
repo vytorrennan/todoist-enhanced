@@ -6,7 +6,6 @@ import { CalendarSurface } from '@/components/CalendarSurface';
 import { useProjectPeople } from '@/hooks/useProjectPeople';
 import { useProjectCompleted } from '@/hooks/useProjectCompleted';
 import { InsightsButton } from '@/components/InsightsButton';
-import { HireNote } from '@/components/HireNote';
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { SubtasksProvider } from '@/components/TaskRow';
@@ -163,9 +162,7 @@ function ProjectBody({
   const projectViews = useProjectViews(projectId);
   const viewKey = projectViews.activeKey;
   const current = viewPrefs(prefs, viewKey);
-  const hireNoteOpen = useStore((s) => s.hireNote);
   /* A row of the project's own tasks (or of the Scheduled list), under Quick; elsewhere under the header. */
-  const hireInList = current.mode === 'list';
 
   const project = snapshot.projects[projectId];
 
@@ -321,7 +318,6 @@ function ProjectBody({
   return (
     <div className={pageClass(current)}>
       <PageHeader
-        hireNote={!hireInList}
         title={
           <span className="ptitle-row">
             {/* The project's mark, in front of its name: pressing it opens the
@@ -511,7 +507,6 @@ function ProjectBody({
               project, not in a section that happens to be called nothing. */}
           <TaskGroup
             items={looseItems}
-            lead={hireNoteOpen ? <HireNote /> : undefined}
             childrenOf={childrenOf}
             onOpen={onOpen}
             showProject={false}
@@ -562,8 +557,6 @@ function ProjectBody({
           {quickGroup}
           <TaskGroup
             title={t('section.scheduled')}
-            lead={hireNoteOpen ? <HireNote /> : undefined}
-            keepWhenEmpty={hireNoteOpen}
             items={sorted(pool.filter((i) => i.due !== null))}
             childrenOf={childrenOf}
             onOpen={onOpen}
@@ -590,7 +583,6 @@ function ProjectBody({
         <ModeSurface
           items={pool}
           lead={quickGroup}
-          firstGroupLead={hireNoteOpen ? <HireNote /> : undefined}
           childrenOf={childrenOf}
           mode={current.mode}
           viewKey={viewKey}

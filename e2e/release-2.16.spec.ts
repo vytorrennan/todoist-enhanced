@@ -124,7 +124,7 @@ for (const width of [1280, 390]) test(`workspace at ${width}px has projects, arc
 test('step changes queue offline, survive a real snapshot reload and flush on reconnect', async ({ demo: page }) => {
   await seed(page);
   const writes: Array<{ type: string; args: { id: string; labels?: string[] } }> = [];
-  await page.route('https://api.todoist.com/**', async (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const body = new URLSearchParams(route.request().postData() ?? '');
     const commands = JSON.parse(body.get('commands') ?? '[]') as Array<{ uuid: string; type: string; args: { id: string; labels?: string[] } }>;
     writes.push(...commands);

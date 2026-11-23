@@ -189,7 +189,7 @@ export function DateField({
         visibility: position ? undefined : 'hidden',
       }}
     >
-      {locked ? <div className="deadline-pro-notice"><p>{t('deadline.proRequired')} <a href="https://www.todoist.com/pricing" target="_blank" rel="noopener noreferrer">{t('deadline.learnMore')}</a></p></div> : <DatePicker
+      {locked ? <div className="deadline-pro-notice"><p>{t('deadline.proRequired')}</p></div> : <DatePicker
         value={value}
         label={label}
         min={min}

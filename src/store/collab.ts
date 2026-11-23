@@ -2,7 +2,7 @@ import { fetchProjectPeople } from '@/api/projectPeople';
 import { schedulePersist } from './helpers';
 import { canAssign } from '@/domain/assignees';
 /** Todoist's notifications, sharing a project, and assigning a task. */
-import { command } from '@/api/commands';
+import { command, newUuid } from '@/api/commands';
 import { translate } from '@/i18n';
 import type { Snapshot } from '@/domain/types';
 import type { Slice, CollabSlice } from './types';
@@ -93,6 +93,46 @@ export const createCollabSlice: Slice<CollabSlice> = (set, get) => ({
       (snapshot) => snapshot,
     );
     await get().loadProjectPeople(projectId, true);
+  },
+
+  async createWorkspace(name) {
+    const clean = name.trim().slice(0, 120);
+    if (!clean) return null;
+    const tempId = newUuid();
+    const mapping = await get().apply(
+      [{ type: 'workspace_add', uuid: newUuid(), temp_id: tempId, args: { name: clean } }],
+      (snapshot) => ({
+        ...snapshot,
+        workspaces: {
+          ...snapshot.workspaces,
+          [tempId]: { id: tempId, name: clean, properties: { default_access_level: 'team' }, is_archived: false, is_deleted: false },
+        },
+      }),
+    );
+    return mapping[tempId] ?? tempId;
+  },
+
+  async inviteToWorkspace(workspaceId, email) {
+    await get().apply(
+      [command('workspace_invite', { workspace_id: workspaceId, email: email.trim(), role: 'MEMBER' })],
+      (snapshot) => snapshot,
+    );
+  },
+
+  async createFolder(workspaceId, name) {
+    const clean = name.trim().slice(0, 120);
+    if (!clean) return;
+    const tempId = newUuid();
+    await get().apply(
+      [{ type: 'folder_add', uuid: newUuid(), temp_id: tempId, args: { workspace_id: workspaceId, name: clean } }],
+      (snapshot) => ({
+        ...snapshot,
+        folders: {
+          ...(snapshot.folders ?? {}),
+          [tempId]: { id: tempId, name: clean, workspace_id: workspaceId, child_order: Object.keys(snapshot.folders ?? {}).length + 1, is_deleted: false },
+        },
+      }),
+    );
   },
 
   async changeRole(projectId, userId, role) {

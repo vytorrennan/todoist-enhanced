@@ -1,5 +1,11 @@
 node_modules
 dist
+# The server's bundle, and the data it keeps when run from this folder.
+dist-server
+data
+*.db
+*.db-wal
+*.db-shm
 dist-ssr
 .DS_Store
 *.local

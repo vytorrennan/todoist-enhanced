@@ -1,5 +1,4 @@
 import { isUncompletable } from '@/domain/types';
-import { HireNote } from '@/components/HireNote';
 import { useMemo, useRef, useState } from 'react';
 import { useDndMonitor } from '@dnd-kit/core';
 import { Icon } from '@/components/Icon';
@@ -11,7 +10,7 @@ import { navigate } from '@/hooks/useRoute';
 import { PageMenu } from '@/components/PageMenu';
 import { TagSheet, type TagSheetTarget } from '@/components/overlays/TagSheet';
 import { useConfirm } from '@/components/overlays/Confirm';
-import { copyText, todoistLabelUrl } from '@/api/links';
+import { copyText, labelLink } from '@/api/links';
 import {
   TAG_DRAG_PREFIX, TAG_DROP_PREFIX, TAG_TOP_DROP_ID, useTagDrag, useTagTopDrop,
 } from '@/components/dnd/DraggableTag';
@@ -99,7 +98,6 @@ export function LabelsView() {
           </button>
         </div>
       </div>
-      <HireNote />
 
       {labels.length === 0 ? (
         <p className="empty">{t('labels.none')}</p>
@@ -182,7 +180,7 @@ function TagRow({
           },
           {
             key: 'link', label: t('labels.copyLink'), icon: 'link',
-            onPick: () => void copyText(todoistLabelUrl(label.id))
+            onPick: () => void copyText(labelLink(label.name))
               .then((ok) => toast(t(ok ? 'task.linkCopied' : 'task.linkNotCopied'))),
           },
           {

@@ -7,6 +7,8 @@ export interface Route {
   id?: string;
   /** A project section to reveal after navigation from global search. */
   sectionId?: string;
+  /** A task to open on top of the page, from a link to it. */
+  taskId?: string;
   query?: string;
 }
 
@@ -37,19 +39,32 @@ export function parseRoute(hash: string): Route {
   ];
   if (!known.includes(view as ViewId)) return { view: 'week' };
   if (view === 'search') return { view: 'search', query: new URLSearchParams(query).get('q') ?? '' };
-  const sectionId = view === 'project' ? new URLSearchParams(query).get('section') ?? undefined : undefined;
-  return id ? { view: view as ViewId, id: readId(id), sectionId } : { view: view as ViewId };
+  const params = new URLSearchParams(query);
+  const sectionId = view === 'project' ? params.get('section') ?? undefined : undefined;
+  const taskId = view === 'project' ? params.get('task') ?? undefined : undefined;
+  return id ? { view: view as ViewId, id: readId(id), sectionId, taskId } : { view: view as ViewId };
 }
 
 export const routeKey = (route: Route): string =>
   route.id ? `${route.view}:${route.id}` : route.view;
 
-export function navigate(view: ViewId, id?: string, options?: { sectionId?: string; query?: string }): void {
+function hashFor(view: ViewId, id?: string, options?: { sectionId?: string; query?: string }): string {
   const base = id ? `#/${view}/${encodeURIComponent(id)}` : `#/${view}`;
-  if (view === 'search') { window.location.hash = `${base}?q=${encodeURIComponent(options?.query ?? '')}`; return; }
-  window.location.hash = options?.sectionId
-    ? `${base}?section=${encodeURIComponent(options.sectionId)}`
-    : base;
+  if (view === 'search') return `${base}?q=${encodeURIComponent(options?.query ?? '')}`;
+  return options?.sectionId ? `${base}?section=${encodeURIComponent(options.sectionId)}` : base;
+}
+
+export function navigate(view: ViewId, id?: string, options?: { sectionId?: string; query?: string }): void {
+  window.location.hash = hashFor(view, id, options);
+}
+
+/**
+ * The same destination, in place of the current history entry. Used when a
+ * task closes: Back then returns to the page before the link, not to the link.
+ */
+export function replaceRoute(view: ViewId, id?: string, options?: { sectionId?: string; query?: string }): void {
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hashFor(view, id, options)}`);
+  window.dispatchEvent(new HashChangeEvent('hashchange'));
 }
 
 /** The current destination, kept in the address bar so Back works in the PWA. */

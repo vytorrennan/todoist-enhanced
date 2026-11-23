@@ -462,7 +462,6 @@ export interface Preferences {
    */
   seenVersion: string | null;
   /** The one-time note for Todoist's own people has been shown to this account. */
-  hireNoteSeen: boolean;
 }
 
 export const defaultPreferences = (locale: Locale): Preferences => ({
@@ -520,7 +519,6 @@ export const defaultPreferences = (locale: Locale): Preferences => ({
   workspaceOrder: [],
   whatsNew: true,
   seenVersion: null,
-  hireNoteSeen: false,
 });
 
 /**
@@ -631,7 +629,6 @@ export function hydratePreferences(stored: unknown, locale: Locale): Preferences
     seenVersion: typeof s.seenVersion === 'string' && /^\d+\.\d+\.\d+$/.test(s.seenVersion)
       ? s.seenVersion
       : null,
-    hireNoteSeen: s.hireNoteSeen === true,
     views: s.views ?? {},
     projectViews: readProjectViews(s.projectViews),
     activeViews: readStringMap(s.activeViews),

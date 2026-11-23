@@ -1,4 +1,3 @@
-import { TodoistMark } from './TodoistMark';
 import { addDays, nextMonday, nextSaturday, startOfDay } from 'date-fns';
 import { confirmUndatedMove } from '@/domain/confirmUndatedMove';
 import { AssigneeField } from './AssigneeField';
@@ -15,7 +14,7 @@ import { usePhoneBehaviour } from '@/hooks/useTouchLayout';
    a finger held on the row it is under. Both ask this component to open one of
    its menus, and both say which by name. */
 import { ROW_MENU_EVENT } from '@/hooks/useKeyboard';
-import { copyText, isTemporaryId, todoistTaskUrl } from '@/api/links';
+import { copyText, isTemporaryId, taskLink } from '@/api/links';
 import { ROW_PRESS_EVENT, type RowMenu } from '@/domain/gestures';
 import { useStore } from '@/store/store';
 import { useConfirm } from './overlays/Confirm';
@@ -521,7 +520,7 @@ export function TaskActions({ item, childrenOf, onOpen, onKeep, contextOnly = fa
       </div>}
       {menu === 'deadline' && <div className={`popover rowmenu schedulemenu${phone ? ' asSheet' : placement.className}`} role="menu" ref={placement.ref}>
         {back}
-        {deadlineLocked ? <div className="deadline-pro-notice"><p>{t('deadline.proRequired')} <a href="https://www.todoist.com/pricing" target="_blank" rel="noopener noreferrer">{t('deadline.learnMore')}</a></p></div> : <DatePicker value={item.deadline?.date ?? ''} label={t('detail.deadline')} onEscape={() => setMenu('none')} onPick={(date) => {
+        {deadlineLocked ? <div className="deadline-pro-notice"><p>{t('deadline.proRequired')}</p></div> : <DatePicker value={item.deadline?.date ?? ''} label={t('detail.deadline')} onEscape={() => setMenu('none')} onPick={(date) => {
           setMenu('none'); void updateTask(item.id, { deadline: date ? { date: date.slice(0, 10), lang: locale } : null });
         }} />}
       </div>}
@@ -721,22 +720,13 @@ export function TaskActions({ item, childrenOf, onOpen, onKeep, contextOnly = fa
                 <span><Icon name="subtask" size="sm" /> {t('task.unnest')}</span>
               </button>
             )}
-            <button
-              className="opt"
-              onClick={() => {
-                setMenu('none');
-                window.open(todoistTaskUrl(item.id), '_blank', 'noopener');
-              }}
-            >
-              <span><TodoistMark className="ic ic-sm menu-mark" /> {t('task.openInTodoist')}</span>
-            </button>
             {!isTemporaryId(item.id) && (
               <button
                 className="opt"
                 disabled={demo}
                 onClick={() => {
                   setMenu('none');
-                  void copyText(todoistTaskUrl(item.id))
+                  void copyText(taskLink(item.project_id, item.id))
                     .then((ok) => toast(t(ok ? 'task.linkCopied' : 'task.linkNotCopied')));
                 }}
               >

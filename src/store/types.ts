@@ -94,7 +94,6 @@ export interface AppState {
    */
   resolvedIds: Record<string, string>;
   /** Why the last "Continue with Todoist" did not end signed in, for the connect screen. */
-  signInError: 'denied' | 'failed' | null;
   /**
    * The Someday tasks kept on purpose, task id to the day they were kept
    * (#161). Local to this device: nothing about it is sent to Todoist.
@@ -160,6 +159,10 @@ export interface AppState {
   answerInvitation: (notificationId: string, accept: boolean) => Promise<void>;
   /** Invites by e-mail; `role` only means something in a team workspace. */
   shareProject: (projectId: string, email: string, role?: string) => Promise<void>;
+  /** Creates a workspace (a team). Resolves to its id once the server has answered. */
+  createWorkspace: (name: string) => Promise<string | null>;
+  inviteToWorkspace: (workspaceId: string, email: string) => Promise<void>;
+  createFolder: (workspaceId: string, name: string) => Promise<void>;
   removeCollaborator: (projectId: string, email: string) => Promise<void>;
   /** Changes what a member may do in a workspace project. */
   changeRole: (projectId: string, userId: string, role: string) => Promise<void>;
@@ -402,8 +405,6 @@ export interface AppState {
   /** Closes the panel, or only that one when it is the one that is open. */
   closeSidePanel: (panel?: SidePanel) => void;
   /** The one-time note for Todoist's people is up on the page. Lasts until the app is reloaded. */
-  hireNote: boolean;
-  setHireNote: (open: boolean) => void;
   timeFilter: TimeFilter;
   setTimeFilter: (patch: Partial<TimeFilter>) => void;
 
@@ -414,11 +415,11 @@ export interface AppState {
 /** One slice of the store: its part of the state, built with the whole store's `set` and `get`. */
 export type Slice<T> = StateCreator<AppState, [], [], T>;
 
-export type SyncSlice = Pick<AppState, 'ready' | 'connected' | 'snapshot' | 'syncState' | 'syncError' | 'settingsChecked' | 'settingsUnavailable' | 'pendingCount' | 'demo' | 'resolvedIds' | 'signInError' | 'init' | 'connect' | 'startDemo' | 'disconnect' | 'refresh' | 'startPolling' | 'apply'>;
-export type CollabSlice = Pick<AppState, 'markNotifications' | 'answerInvitation' | 'shareProject' | 'removeCollaborator' | 'changeRole' | 'leaveProject' | 'assignTask' | 'loadProjectPeople'>;
+export type SyncSlice = Pick<AppState, 'ready' | 'connected' | 'snapshot' | 'syncState' | 'syncError' | 'settingsChecked' | 'settingsUnavailable' | 'pendingCount' | 'demo' | 'resolvedIds' | 'init' | 'connect' | 'startDemo' | 'disconnect' | 'refresh' | 'startPolling' | 'apply'>;
+export type CollabSlice = Pick<AppState, 'markNotifications' | 'answerInvitation' | 'shareProject' | 'createWorkspace' | 'inviteToWorkspace' | 'createFolder' | 'removeCollaborator' | 'changeRole' | 'leaveProject' | 'assignTask' | 'loadProjectPeople'>;
 export type DustSlice = Pick<AppState, 'dustKept' | 'keepInSomeday'>;
 export type PreferencesSlice = Pick<AppState, 'prefs' | 'walkthrough' | 'setPrefs' | 'setViewPrefs' | 'setProjectViews' | 'setActiveView' | 'removeViewPrefs' | 'setLocale' | 'ensurePreferencesTask' | 'beginTourPreview' | 'endTourPreview' | 'setWalkthrough'>;
 export type TasksSlice = Pick<AppState, 'logbookEntry' | 'setLogbookEntry' | 'loadTask' | 'updateTask' | 'addComment' | 'updateComment' | 'deleteComment' | 'toggleReaction' | 'duplicateTask' | 'setRecurrence' | 'setEstimates' | 'toggleTask' | 'completeTasks' | 'removeTask' | 'removeTasks' | 'restoreTasks' | 'createTaskId' | 'createTask' | 'createTasks' | 'setTaskLabels' | 'setTaskPriority' | 'skipOccurrence' | 'skipOccurrences' | 'reorderSubtasks'>;
 export type TasksMoveSlice = Pick<AppState, 'sendTo' | 'sendManyTo' | 'updateMany' | 'moveMany' | 'nestMany' | 'moveTask'>;
 export type StructureSlice = Pick<AppState, 'createLabel' | 'createLabelOn' | 'renameLabel' | 'setLabelFavourite' | 'setLabelColour' | 'deleteLabel' | 'setFilterFavourite' | 'createFilter' | 'updateFilter' | 'deleteFilter' | 'reorderFilters' | 'reorderLabels' | 'reorderProjects' | 'nestProject' | 'moveProjectToWorkspace' | 'createProject' | 'renameFolder' | 'deleteFolder' | 'moveProjectToFolder' | 'archiveProject' | 'deleteProject' | 'duplicateProject' | 'updateProjectFields' | 'createSection' | 'moveSection' | 'removeSection' | 'archiveSection' | 'moveSectionToProject' | 'duplicateSection' | 'updateSectionFields'>;
-export type UiSlice = Pick<AppState, 'toasts' | 'undoStack' | 'draggingTaskId' | 'draggingSectionId' | 'nesting' | 'outdenting' | 'draggingProjectId' | 'draggingTag' | 'selection' | 'selectionAnchor' | 'toast' | 'dismissToast' | 'pushUndo' | 'undo' | 'consumeUndo' | 'setDraggingSection' | 'setDraggingTag' | 'setNesting' | 'setOutdenting' | 'setDraggingProject' | 'sidePanel' | 'openSidePanel' | 'closeSidePanel' | 'hireNote' | 'setHireNote' | 'timeFilter' | 'setTimeFilter' | 'toggleSelection' | 'setSelectionAnchor' | 'selectRange' | 'clearSelection' | 'setDragging'>;
+export type UiSlice = Pick<AppState, 'toasts' | 'undoStack' | 'draggingTaskId' | 'draggingSectionId' | 'nesting' | 'outdenting' | 'draggingProjectId' | 'draggingTag' | 'selection' | 'selectionAnchor' | 'toast' | 'dismissToast' | 'pushUndo' | 'undo' | 'consumeUndo' | 'setDraggingSection' | 'setDraggingTag' | 'setNesting' | 'setOutdenting' | 'setDraggingProject' | 'sidePanel' | 'openSidePanel' | 'closeSidePanel' | 'timeFilter' | 'setTimeFilter' | 'toggleSelection' | 'setSelectionAnchor' | 'selectRange' | 'clearSelection' | 'setDragging'>;
