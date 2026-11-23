@@ -1,5 +1,5 @@
 import { ApiFailure, type Db, newId, nextSeq, nowIso } from './db';
-import { canBeAssigned, requireProject, requireWorkspace } from './access';
+import { canBeAssigned, requireProject, requireWorkspace, workspaceRole } from './access';
 import { type Args, type Ctx, endOfList, id as idArg, integer, resolveId, text, truthy } from './ctx';
 import { requireFullSync, requireFullSyncFor, revokeWorkspaceGrants, setMembership } from './sharing';
 import { collaboratorOut, type ProjectRow, sectionOut } from './serialize';
@@ -188,7 +188,10 @@ export function updateProject(ctx: Ctx, args: Args): void {
     }
     if (folder) {
       const row = db.prepare('SELECT workspace_id FROM folders WHERE id = ? AND is_deleted = 0').get(folder) as { workspace_id: string } | undefined;
-      if (!row || row.workspace_id !== project.workspace_id) throw ApiFailure.badRequest('That folder is not in this project’s workspace.', 'FOLDER_NOT_IN_WORKSPACE');
+      // The folder must be in this project's workspace, and the person must be in that workspace to file the project in it.
+      if (!row || row.workspace_id !== project.workspace_id || !workspaceRole(db, row.workspace_id, viewer.id)) {
+        throw ApiFailure.badRequest('That folder is not in this project’s workspace.', 'FOLDER_NOT_IN_WORKSPACE');
+      }
     }
     db.prepare('UPDATE projects SET folder_id = ?, seq = ? WHERE id = ?').run(folder, nextSeq(db), id);
     if (folder) db.prepare('UPDATE projects SET parent_id = NULL, seq = ? WHERE id = ?').run(nextSeq(db), id);
@@ -239,10 +242,13 @@ export function reorderProjects(ctx: Ctx, args: Args): void {
   const { db, viewer } = ctx;
   const entries = Array.isArray(args.projects) ? args.projects as Array<{ id?: unknown; child_order?: unknown; order_key?: unknown }> : [];
   for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') throw ApiFailure.badRequest('Each project order names a project.', 'INVALID_ARGUMENT');
     const id = resolveId(ctx, entry.id);
     const membership = requireProject(db, id, viewer.id, 'read');
+    const childOrder = Number(entry.child_order ?? membership.child_order);
+    if (!Number.isInteger(childOrder)) throw ApiFailure.badRequest('A child order is a whole number.', 'INVALID_ARGUMENT');
     db.prepare('UPDATE project_members SET child_order = ?, order_key = ?, seq = ? WHERE project_id = ? AND user_id = ?').run(
-      Number(entry.child_order ?? membership.child_order),
+      childOrder,
       typeof entry.order_key === 'string' ? entry.order_key : membership.order_key,
       nextSeq(db), id, viewer.id,
     );
@@ -288,6 +294,9 @@ export function deleteProject(ctx: Ctx, id: string): void {
     db.prepare('UPDATE sections SET is_deleted = 1, seq = ? WHERE project_id = ? AND is_deleted = 0').run(nextSeq(db), projectId);
     db.prepare(`UPDATE notes SET is_deleted = 1, seq = ? WHERE is_deleted = 0 AND (project_id = ? OR item_id IN (SELECT id FROM items WHERE project_id = ?))`)
       .run(nextSeq(db), projectId, projectId);
+    // The reminders of its tasks go with them, so a device that had them drops them.
+    db.prepare('UPDATE reminders SET is_deleted = 1, seq = ? WHERE is_deleted = 0 AND item_id IN (SELECT id FROM items WHERE project_id = ?)').run(nextSeq(db), projectId);
+    db.prepare('UPDATE location_reminders SET is_deleted = 1, seq = ? WHERE is_deleted = 0 AND item_id IN (SELECT id FROM items WHERE project_id = ?)').run(nextSeq(db), projectId);
   }
 }
 

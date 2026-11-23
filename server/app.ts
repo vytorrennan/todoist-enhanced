@@ -186,7 +186,7 @@ export function createApp(options: AppOptions): App {
 
   router.add('POST', '/api/v1/workspaces/:id/users/:userId', 'bearer', (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    setWorkspaceRole(ctxFor(req), req.params.id, req.params.userId, body.role);
+    db.transaction(() => setWorkspaceRole(ctxFor(req), req.params.id, req.params.userId, body.role))();
     res.json({});
   });
 
@@ -205,12 +205,12 @@ export function createApp(options: AppOptions): App {
 
   router.add('POST', '/api/v1/comments/:id/reactions', 'bearer', (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    res.json(setReaction(ctxFor(req), req.params.id, body.reaction, true));
+    res.json(db.transaction(() => setReaction(ctxFor(req), req.params.id, body.reaction, true))());
   });
 
   router.add('POST', '/api/v1/comments/:id/reactions/remove', 'bearer', (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    setReaction(ctxFor(req), req.params.id, body.reaction, false);
+    db.transaction(() => setReaction(ctxFor(req), req.params.id, body.reaction, false))();
     res.empty();
   });
 

@@ -69,6 +69,11 @@ function leavesRecipient(db: Db, from: string | null, to: string): void {
   if (from && from !== to) requireFullSync(db, from);
 }
 
+/** Who a reminder is for is the setter's to decide: the person it is for cannot pass it on. */
+function assertSetter(ctx: Ctx, row: { user_id: string }): void {
+  if (row.user_id !== ctx.viewer.id) throw ApiFailure.forbidden('Only the person who set a reminder can change who it is for.', 'NOT_THE_SETTER');
+}
+
 function taskProject(ctx: Ctx, itemId: string): string {
   const row = ctx.db.prepare('SELECT project_id FROM items WHERE id = ? AND is_deleted = 0').get(itemId) as { project_id: string } | undefined;
   if (!row) throw ApiFailure.notFound('That task does not exist.', 'ITEM_NOT_FOUND');
@@ -128,7 +133,8 @@ export function updateReminder(ctx: Ctx, args: Args): void {
     if (row.type !== 'absolute') throw ApiFailure.badRequest('Only an absolute reminder has a due.', 'INVALID_ARGUMENT');
     set.due = JSON.stringify(dueArg(args.due));
   }
-  if (typeof args.notify_uid === 'string') {
+  if (typeof args.notify_uid === 'string' && args.notify_uid !== row.notify_uid) {
+    assertSetter(ctx, row);
     set.notify_uid = notifyOf(ctx, taskProject(ctx, row.item_id), args.notify_uid);
     leavesRecipient(ctx.db, row.notify_uid, set.notify_uid as string);
   }
@@ -177,7 +183,8 @@ export function updateLocationReminder(ctx: Ctx, args: Args): void {
     if (radius === undefined) throw ApiFailure.badRequest('A radius is a whole number of metres.', 'INVALID_ARGUMENT');
     set.radius = radius;
   }
-  if (typeof args.notify_uid === 'string') {
+  if (typeof args.notify_uid === 'string' && args.notify_uid !== row.notify_uid) {
+    assertSetter(ctx, row);
     set.notify_uid = notifyOf(ctx, taskProject(ctx, row.item_id), args.notify_uid);
     leavesRecipient(ctx.db, row.notify_uid, set.notify_uid as string);
   }

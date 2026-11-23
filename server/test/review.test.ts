@@ -319,6 +319,113 @@ describe('the third review', () => {
   });
 });
 
+/** The fourth review: each test fails without the fix it names. */
+describe('the fourth review', () => {
+  const share = (project: string, who: Person, role = 'READ_WRITE') =>
+    command('share_project', { project_id: project, email: who.email, role });
+
+  it('the person who set a reminder sees the edits and removal the person it is for makes', async () => {
+    const owner = await person(base);
+    const recipient = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Edits seen' }, { temp_id: tempId(80) }),
+      command('item_add', { content: 'Watched', project_id: tempId(80) }, { temp_id: tempId(81) }),
+    ]);
+    await run(owner, [share(made.real(80), recipient)]);
+    await acceptFirst(recipient);
+    const set = await as(owner).post('/api/v1/reminders', { task_id: made.real(81), minute_offset: 10, notify_uid: recipient.id });
+    expect(set.status).toBe(200);
+    const id = set.body.id as string;
+    expect((await run(recipient, [command('reminder_update', { id, minute_offset: 20 })])).statuses).toEqual(['ok']);
+    expect((await run(recipient, [command('reminder_delete', { id })])).statuses).toEqual(['ok']);
+    const seen = (await as(owner).get('/api/v1/activities?limit=50')).body.results as Array<{ object_type: string; event_type: string }>;
+    expect(seen).toEqual(expect.arrayContaining([
+      expect.objectContaining({ object_type: 'reminder', event_type: 'updated' }),
+      expect.objectContaining({ object_type: 'reminder', event_type: 'deleted' }),
+    ]));
+  });
+
+  it('the person a reminder is for cannot hand it to someone else', async () => {
+    const owner = await person(base);
+    const recipient = await person(base);
+    const third = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Hand-on refused' }, { temp_id: tempId(82) }),
+      command('item_add', { content: 'Not yours to pass', project_id: tempId(82) }, { temp_id: tempId(83) }),
+    ]);
+    await run(owner, [share(made.real(82), recipient), share(made.real(82), third)]);
+    await acceptFirst(recipient);
+    await acceptFirst(third);
+    const set = await as(owner).post('/api/v1/reminders', { task_id: made.real(83), minute_offset: 10, notify_uid: recipient.id });
+    const passed = await run(recipient, [command('reminder_update', { id: set.body.id, notify_uid: third.id })]);
+    expect(passed.statuses[0]).toMatchObject({ error_tag: 'NOT_THE_SETTER' });
+    expect((await as(recipient).get(`/api/v1/reminders/${set.body.id as string}`)).status).toBe(200);
+  });
+
+  it('a reminder whose task is deleted is removed on the next incremental sync', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Gone task' }, { temp_id: tempId(90) }),
+      command('item_add', { content: 'Doomed', project_id: tempId(90) }, { temp_id: tempId(91) }),
+    ]);
+    const set = await as(owner).post('/api/v1/reminders', { task_id: made.real(91), minute_offset: 10 });
+    const first = await as(owner).sync({ types: ['reminders'] });
+    expect((first.body.reminders as Array<{ id: string }>).map((r) => r.id)).toContain(set.body.id);
+    await run(owner, [command('item_delete', { id: made.real(91) })]);
+    const next = await as(owner).sync({ types: ['reminders'], token: first.body.sync_token as string });
+    expect(next.body.reminders).toContainEqual(expect.objectContaining({ id: set.body.id, is_deleted: true }));
+  });
+
+  it('a reminder whose project is deleted is removed on the next incremental sync', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Gone project' }, { temp_id: tempId(92) }),
+      command('item_add', { content: 'Inside', project_id: tempId(92) }, { temp_id: tempId(93) }),
+    ]);
+    const set = await as(owner).post('/api/v1/reminders', { task_id: made.real(93), minute_offset: 10 });
+    const first = await as(owner).sync({ types: ['reminders'] });
+    expect((first.body.reminders as Array<{ id: string }>).map((r) => r.id)).toContain(set.body.id);
+    await run(owner, [command('project_delete', { id: made.real(92) })]);
+    const next = await as(owner).sync({ types: ['reminders'], token: first.body.sync_token as string });
+    expect(next.body.reminders).toContainEqual(expect.objectContaining({ id: set.body.id, is_deleted: true }));
+  });
+
+  it('renaming a label to one the task has in another case leaves one of them', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const { real } = await run(owner, [command('item_add', { content: 'Tagged', project_id: inbox, labels: ['work', 'Urgent'] }, { temp_id: tempId(100) })]);
+    const renamed = await as(owner).post('/api/v1/labels/shared/rename', { name: 'work', new_name: 'urgent' });
+    expect(renamed.status).toBeLessThan(300);
+    const items = (await as(owner).sync({ types: ['items'] })).body.items as Array<{ id: string; labels: string[] }>;
+    expect(items.find((item) => item.id === real(100))?.labels).toEqual(['urgent']);
+  });
+
+  it('an order that is not a whole number, or a null entry, is refused rather than a server error', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const { real } = await run(owner, [command('item_add', { content: 'Ordered', project_id: inbox }, { temp_id: tempId(110) })]);
+    const badDay = await run(owner, [command('item_update_day_orders', { ids_to_orders: { [real(110)]: 'abc' } })]);
+    expect(badDay.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const badProject = await run(owner, [command('project_reorder', { projects: [null] })]);
+    expect(badProject.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+  });
+
+  it('a project admin outside the workspace cannot file the project in one of its folders', async () => {
+    const owner = await person(base);
+    const admin = await person(base);
+    const made = await run(owner, [
+      command('workspace_add', { name: 'Filing hall' }, { temp_id: tempId(120) }),
+      command('folder_add', { name: 'Filed', workspace_id: tempId(120) }, { temp_id: tempId(121) }),
+      command('project_add', { name: 'To file' }, { temp_id: tempId(122) }),
+      command('project_move_to_workspace', { project_id: tempId(122), workspace_id: tempId(120) }),
+    ]);
+    await run(owner, [share(made.real(122), admin, 'ADMIN')]);
+    await acceptFirst(admin);
+    const filed = await run(admin, [command('project_update', { id: made.real(122), folder_id: made.real(121) })]);
+    expect(filed.statuses[0]).toMatchObject({ error_tag: 'FOLDER_NOT_IN_WORKSPACE' });
+  });
+});
+
 describe('a CSV import', () => {
   it('keeps a subtask in its parent\'s section', async () => {
     const who = await person(base);

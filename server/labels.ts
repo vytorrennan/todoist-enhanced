@@ -42,7 +42,8 @@ export function renameOnItems(ctx: Ctx, from: string, to: string | null): void {
     const next: string[] = [];
     for (const name of current) {
       const value = name.toLowerCase() === wanted ? to : name;
-      if (value && !next.includes(value)) next.push(value);
+      // Label names are unique whatever their case, so a rename never leaves two that match.
+      if (value && !next.some((kept) => kept.toLowerCase() === value.toLowerCase())) next.push(value);
     }
     db.prepare('UPDATE items SET labels = ?, seq = ? WHERE id = ?').run(JSON.stringify(next), nextSeq(db), row.id);
   }

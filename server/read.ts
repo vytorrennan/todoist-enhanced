@@ -97,8 +97,10 @@ export function readFor(db: Db, viewer: UserRow, since: number | null, types: re
   }
 
   if (want('reminders')) {
+    // A removal is sent for a reminder whose task went away, so a device drops it; a live one needs a live task the person sees.
     const rows = db.prepare(`SELECT r.*, i.project_id AS project_id FROM reminders r JOIN items i ON i.id = r.item_id
-      WHERE ${full ? 'r.is_deleted = 0' : 'r.seq > @since'} AND i.is_deleted = 0 AND ${visibleSql('i.project_id')}
+      WHERE ${full ? 'r.is_deleted = 0 AND i.is_deleted = 0' : 'r.seq > @since'}
+      AND (r.is_deleted = 1 OR (i.is_deleted = 0 AND ${visibleSql('i.project_id')}))
       AND (r.user_id = @viewer OR r.notify_uid = @viewer)`).all(params) as Array<ReminderRow & { project_id: string }>;
     data.reminders = rows.map((row) => (row.is_deleted ? { id: row.id, item_id: row.item_id, is_deleted: true } : reminderApiShape(row)));
   }

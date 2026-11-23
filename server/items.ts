@@ -296,6 +296,9 @@ export function deleteItem(ctx: Ctx, itemId: string): void {
   for (const id of subtreeIds(db, row.id)) {
     db.prepare('UPDATE items SET is_deleted = 1, seq = ? WHERE id = ? AND is_deleted = 0').run(nextSeq(db), id);
     db.prepare('UPDATE notes SET is_deleted = 1, seq = ? WHERE item_id = ? AND is_deleted = 0').run(nextSeq(db), id);
+    // Its reminders go with it, so a device that had them drops them.
+    db.prepare('UPDATE reminders SET is_deleted = 1, seq = ? WHERE item_id = ? AND is_deleted = 0').run(nextSeq(db), id);
+    db.prepare('UPDATE location_reminders SET is_deleted = 1, seq = ? WHERE item_id = ? AND is_deleted = 0').run(nextSeq(db), id);
   }
 }
 
@@ -370,12 +373,18 @@ export function updateDayOrders(ctx: Ctx, args: Args): void {
   const { db } = ctx;
   const raw = args.ids_to_orders;
   const pairs: Array<[unknown, unknown]> = Array.isArray(raw)
-    ? (raw as Array<{ id?: unknown; day_order?: unknown }>).map((entry) => [entry.id, entry.day_order])
+    ? (raw as unknown[]).map((entry): [unknown, unknown] => {
+      if (!entry || typeof entry !== 'object') throw ApiFailure.badRequest('Each order names an item and its day order.', 'INVALID_ARGUMENT');
+      const { id, day_order } = entry as { id?: unknown; day_order?: unknown };
+      return [id, day_order];
+    })
     : Object.entries((raw ?? {}) as Record<string, unknown>);
   for (const [itemId, order] of pairs) {
+    const dayOrder = Number(order);
+    if (!Number.isInteger(dayOrder)) throw ApiFailure.badRequest('A day order is a whole number.', 'INVALID_ARGUMENT');
     const row = loadItem(ctx, resolveId(ctx, itemId));
     requireProject(db, row.project_id, ctx.viewer.id, 'write');
-    db.prepare('UPDATE items SET day_order = ?, seq = ? WHERE id = ?').run(Number(order), nextSeq(db), row.id);
+    db.prepare('UPDATE items SET day_order = ?, seq = ? WHERE id = ?').run(dayOrder, nextSeq(db), row.id);
   }
 }
 
