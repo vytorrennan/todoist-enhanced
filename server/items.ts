@@ -129,18 +129,21 @@ export function addItem(ctx: Ctx, args: Args, tempId?: string): void {
   const parentArg = idArg(args, 'parent_id');
   let projectId = idArg(args, 'project_id') ?? viewer.inbox_project_id;
   let parent: string | null = null;
+  let parentSection: string | null = null;
   if (parentArg) {
     // A parent the person cannot see answers like one that does not exist: nothing about it is revealed.
     const parentRow = loadItem(ctx, resolveId(ctx, parentArg));
     projectId = parentRow.project_id;
     parent = checkParent(ctx, projectId, parentArg);
+    parentSection = parentRow.section_id;
   }
   projectId = resolveId(ctx, projectId);
   requireProject(db, projectId, viewer.id, 'write');
   const content = text(args, 'content', { required: true, max: MAX_CONTENT }) ?? '';
   const description = text(args, 'description', { max: MAX_DESCRIPTION }) ?? '';
   const priority = cleanPriority(args.priority) ?? 1;
-  const section = checkSection(ctx, projectId, args.section_id);
+  // A subtask is in its parent's section, as a moved one is; a section it names is not used.
+  const section = parent ? parentSection : checkSection(ctx, projectId, args.section_id);
   const due = resolveDue(args.due as Parameters<typeof resolveDue>[0], ctx.today);
   const deadline = cleanDeadline(args.deadline);
   const duration = cleanDuration(args.duration);

@@ -117,6 +117,7 @@ export function runCommands(db: Db, viewer: UserRow, commands: CommandInput[], n
     try {
       if (!handler) throw ApiFailure.badRequest(`The server does not know the command “${String(command.type)}”.`, 'UNKNOWN_COMMAND');
       const args = substitute(command.args ?? {}, ctx.temps) as Args;
+      if (!args || typeof args !== 'object' || Array.isArray(args)) throw ApiFailure.badRequest('A command’s arguments are an object.', 'INVALID_ARGUMENT');
       db.transaction(() => {
         handler(ctx, args, command.temp_id);
         recordActivity(db, viewer, command.type, objectOf(ctx, command.type, args, command.temp_id));

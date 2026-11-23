@@ -1,6 +1,8 @@
 import { ApiFailure, type Db, newId, nextSeq } from './db';
 import { activeMembership, requireProject, visibleSql } from './access';
 import { type Args, type Ctx, id as idArg, integer, resolveId, text, truthy } from './ctx';
+import { checkDueDate } from './recurrence';
+import { requireFullSync } from './sharing';
 
 /**
  * Reminders on tasks. A reminder is kept as it was set (an absolute one at a
@@ -53,12 +55,18 @@ function dueArg(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object') throw ApiFailure.badRequest('An absolute reminder needs its due.', 'INVALID_ARGUMENT');
   const source = value as Record<string, unknown>;
   const date = typeof source.date === 'string' ? source.date : '';
-  if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?/.test(date)) {
-    throw ApiFailure.badRequest('A reminder needs the date it is due on.', 'INVALID_DATE');
-  }
+  checkDueDate(date);
   const due: Record<string, unknown> = { date, string: typeof source.string === 'string' ? source.string : date.slice(0, 10) };
   for (const key of DUE_FIELDS) if (key in source && key !== 'date' && key !== 'string') due[key] = source[key];
   return due;
+}
+
+/**
+ * A reminder moved to another person: the one it was taken from reads
+ * everything again, so it leaves their store instead of lingering there.
+ */
+function leavesRecipient(db: Db, from: string | null, to: string): void {
+  if (from && from !== to) requireFullSync(db, from);
 }
 
 function taskProject(ctx: Ctx, itemId: string): string {
@@ -120,7 +128,10 @@ export function updateReminder(ctx: Ctx, args: Args): void {
     if (row.type !== 'absolute') throw ApiFailure.badRequest('Only an absolute reminder has a due.', 'INVALID_ARGUMENT');
     set.due = JSON.stringify(dueArg(args.due));
   }
-  if (typeof args.notify_uid === 'string') set.notify_uid = notifyOf(ctx, taskProject(ctx, row.item_id), args.notify_uid);
+  if (typeof args.notify_uid === 'string') {
+    set.notify_uid = notifyOf(ctx, taskProject(ctx, row.item_id), args.notify_uid);
+    leavesRecipient(ctx.db, row.notify_uid, set.notify_uid as string);
+  }
   if (typeof args.service === 'string') set.service = args.service;
   if ('is_urgent' in args) set.is_urgent = truthy(args.is_urgent) ? 1 : 0;
   const keys = Object.keys(set);
@@ -166,7 +177,10 @@ export function updateLocationReminder(ctx: Ctx, args: Args): void {
     if (radius === undefined) throw ApiFailure.badRequest('A radius is a whole number of metres.', 'INVALID_ARGUMENT');
     set.radius = radius;
   }
-  if (typeof args.notify_uid === 'string') set.notify_uid = notifyOf(ctx, taskProject(ctx, row.item_id), args.notify_uid);
+  if (typeof args.notify_uid === 'string') {
+    set.notify_uid = notifyOf(ctx, taskProject(ctx, row.item_id), args.notify_uid);
+    leavesRecipient(ctx.db, row.notify_uid, set.notify_uid as string);
+  }
   const keys = Object.keys(set);
   if (keys.length === 0) return;
   ctx.db.prepare(`UPDATE location_reminders SET ${keys.map((key) => `${key} = @${key}`).join(', ')}, seq = @seq WHERE id = @id`)

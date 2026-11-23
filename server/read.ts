@@ -134,8 +134,6 @@ export function readFor(db: Db, viewer: UserRow, since: number | null, types: re
     }
   }
 
-  if (want('reminders')) data.reminders = [];
-
   if (want('user')) {
     const fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(viewer.id) as UserRow;
     if (full || fresh.seq > s) data.user = userOut(fresh);

@@ -5,7 +5,7 @@ import { parseLabels } from './serialize';
 
 /** Labels (a person's own tags) and saved filters. */
 
-const MAX_NAME = 120;
+export const MAX_NAME = 120;
 const COLOR = /^[a-z_]{2,40}$/;
 
 const cleanColor = (value: unknown): string | undefined => {

@@ -5,7 +5,7 @@ import type { Request, Response, Router } from './http';
 import { applyDirect } from './commands';
 import { requireWorkspace, visibleSql } from './access';
 import { type Args, makeCtx } from './ctx';
-import { filterPage, renameOnItems } from './labels';
+import { filterPage, MAX_NAME, renameOnItems } from './labels';
 import { loadNote } from './notes';
 import { todayIn } from './dates';
 import { readNaturalDate } from '../src/domain/nlp';
@@ -405,9 +405,10 @@ export function registerRest(router: Router, db: Db): void {
     const viewer = viewerOf(req);
     const body = bodyOf(req);
     const from = typeof body.name === 'string' ? body.name : '';
-    const to = typeof body.new_name === 'string' ? body.new_name : '';
-    if (!from || !to) throw ApiFailure.badRequest('Name the label and its new name.', 'INVALID_ARGUMENT');
-    renameOnItems(makeCtx(db, viewer), from, to);
+    const to = typeof body.new_name === 'string' ? body.new_name.trim() : '';
+    if (!from || !to || to.length > MAX_NAME) throw ApiFailure.badRequest('Name the label and its new name.', 'INVALID_ARGUMENT');
+    // One transaction: a rename that fails part way leaves no label half renamed.
+    db.transaction(() => renameOnItems(makeCtx(db, viewer), from, to))();
     res.empty();
   });
 
@@ -654,7 +655,7 @@ export function registerRest(router: Router, db: Db): void {
       WHERE m.project_id = ? AND m.state = 'active'`).all(row.id) as Array<{ id: string; email: string; full_name: string; image_id: string | null; timezone: string }>;
     const subprojects = db.prepare(`${PROJECT_SELECT} WHERE p.is_deleted = 0 AND p.parent_id = @project`)
       .all({ viewer: viewer.id, project: row.id }) as ProjectRow[];
-    const folder = row.folder_id ? db.prepare('SELECT * FROM folders WHERE id = ? AND is_deleted = 0').get(row.folder_id) as Parameters<typeof folderShape>[0] | undefined : undefined;
+    const folder = row.folder_id ? visibleFolder(db, viewer, row.folder_id) : undefined;
     res.json({
       project: projectShape(row),
       tasks: tasks.map((task) => taskShape(task, 0)),
@@ -747,11 +748,16 @@ function commentOutFor(viewer: UserRow, db: Db, id: string) {
   return commentShape(db, row);
 }
 
-/** A folder, if its workspace is one the person is in; otherwise the answer is the same as for a folder that does not exist. */
-function folderOutFor(db: Db, viewer: UserRow, id: string) {
-  const row = db.prepare(`SELECT f.* FROM folders f WHERE f.id = @id AND f.is_deleted = 0
+/** A folder row, if its workspace is one the person is in. Nothing else about a folder is ever returned. */
+function visibleFolder(db: Db, viewer: UserRow, id: string) {
+  return db.prepare(`SELECT f.* FROM folders f WHERE f.id = @id AND f.is_deleted = 0
     AND f.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = @viewer)`)
     .get({ id, viewer: viewer.id }) as Parameters<typeof folderShape>[0] | undefined;
+}
+
+/** The folder the API returns; for one the person cannot see, the answer is the same as for a folder that does not exist. */
+function folderOutFor(db: Db, viewer: UserRow, id: string) {
+  const row = visibleFolder(db, viewer, id);
   if (!row) throw ApiFailure.notFound('That folder does not exist.', 'FOLDER_NOT_FOUND');
   return folderShape(row);
 }

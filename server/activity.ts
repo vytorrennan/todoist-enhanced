@@ -81,7 +81,12 @@ export interface ActivityFilter {
 /** Events the person may see: those of projects they can see, and their own events with no project. */
 export function listActivity(db: Db, viewer: UserRow, filter: ActivityFilter, cursor: number, limit: number) {
   // Newest first, as the API lists it: a page is the events before the last one of the page before.
-  const where = [`(e.parent_project_id IS NULL AND e.user_id = @viewer OR e.parent_project_id IS NOT NULL AND ${visibleSql('e.parent_project_id')})`, 'e.id < @cursor'];
+  // A reminder is shown only to the person who set it and the person it notifies, not to the rest of the project.
+  const where = [`(e.parent_project_id IS NULL AND e.user_id = @viewer OR e.parent_project_id IS NOT NULL AND ${visibleSql('e.parent_project_id')})`,
+    `(e.object_type NOT IN ('reminder', 'location_reminder') OR e.user_id = @viewer
+      OR EXISTS (SELECT 1 FROM reminders r WHERE r.id = e.object_id AND r.notify_uid = @viewer)
+      OR EXISTS (SELECT 1 FROM location_reminders l WHERE l.id = e.object_id AND l.notify_uid = @viewer))`,
+    'e.id < @cursor'];
   const params: Record<string, unknown> = { viewer: viewer.id, cursor };
   const exact: Array<[keyof ActivityFilter, string]> = [
     ['object_type', 'e.object_type'], ['object_id', 'e.object_id'], ['event_type', 'e.event_type'],

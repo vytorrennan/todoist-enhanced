@@ -94,11 +94,19 @@ export function readBody(raw: IncomingMessage, contentType: string): Promise<unk
       const text = Buffer.concat(chunks).toString('utf8');
       if (!text) { resolveBody({}); return; }
       if (contentType.includes('application/json')) {
+        let value: unknown;
         try {
-          resolveBody(JSON.parse(text));
+          value = JSON.parse(text);
         } catch {
           reject(ApiFailure.badRequest('The request is not valid JSON.', 'INVALID_ARGUMENT'));
+          return;
         }
+        // A body is an object. A bare string, number or list is refused here, not left to fail inside a handler.
+        if (value !== null && (typeof value !== 'object' || Array.isArray(value))) {
+          reject(ApiFailure.badRequest('The request body is a JSON object.', 'INVALID_ARGUMENT'));
+          return;
+        }
+        resolveBody(value);
         return;
       }
       if (contentType.includes('application/x-www-form-urlencoded')) {

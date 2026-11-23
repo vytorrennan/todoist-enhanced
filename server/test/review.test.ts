@@ -149,6 +149,176 @@ describe('what a person can see', () => {
   });
 });
 
+/** The third review: each test fails without the fix it names. */
+describe('the third review', () => {
+  const share = (project: string, who: Person, role = 'READ_WRITE') =>
+    command('share_project', { project_id: project, email: who.email, role });
+
+  it('sync returns the reminders a person can see, and a deleted one as a tombstone', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const { real } = await run(owner, [command('item_add', { content: 'Sync me', project_id: inbox }, { temp_id: tempId(30) })]);
+    const made = await as(owner).post('/api/v1/reminders', { task_id: real(30), minute_offset: 10 });
+    const first = await as(owner).sync({ types: ['reminders'] });
+    expect((first.body.reminders as Array<{ id: string }>).map((r) => r.id)).toContain(made.body.id);
+    await run(owner, [command('reminder_delete', { id: made.body.id })]);
+    const next = await as(owner).sync({ types: ['reminders'], token: first.body.sync_token as string });
+    expect(next.body.reminders).toContainEqual(expect.objectContaining({ id: made.body.id, is_deleted: true }));
+  });
+
+  it('a reminder given to someone else leaves the first person’s store at their next read', async () => {
+    const owner = await person(base);
+    const first = await person(base);
+    const second = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Hand-offs' }, { temp_id: tempId(31) }),
+      command('item_add', { content: 'Hand off', project_id: tempId(31) }, { temp_id: tempId(32) }),
+    ]);
+    await run(owner, [share(made.real(31), first), share(made.real(31), second)]);
+    await acceptFirst(first);
+    await acceptFirst(second);
+    const set = await as(owner).post('/api/v1/reminders', { task_id: made.real(32), minute_offset: 10, notify_uid: first.id });
+    expect(set.status).toBe(200);
+    const before = await as(first).sync({ types: ['reminders'] });
+    expect((before.body.reminders as Array<{ id: string }>).map((r) => r.id)).toContain(set.body.id);
+    const moved = await as(owner).post(`/api/v1/reminders/${set.body.id as string}`, { notify_uid: second.id });
+    expect(moved.status).toBe(200);
+    const after = await as(first).sync({ types: ['reminders'], token: before.body.sync_token as string });
+    expect(after.body.full_sync).toBe(true);
+    expect((after.body.reminders as Array<{ id: string }>).map((r) => r.id)).not.toContain(set.body.id);
+  });
+
+  it('a reminder shows in the activity to the person who set it, not to the rest of the project', async () => {
+    const owner = await person(base);
+    const recipient = await person(base);
+    const other = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Reminder activity' }, { temp_id: tempId(33) }),
+      command('item_add', { content: 'Remind me', project_id: tempId(33) }, { temp_id: tempId(34) }),
+    ]);
+    await run(owner, [share(made.real(33), recipient), share(made.real(33), other)]);
+    await acceptFirst(recipient);
+    await acceptFirst(other);
+    const set = await as(owner).post('/api/v1/reminders', { task_id: made.real(34), minute_offset: 10, notify_uid: recipient.id });
+    expect(set.status).toBe(200);
+    const byOwner = (await as(owner).get('/api/v1/activities?limit=50')).body.results as Array<{ object_type: string }>;
+    expect(byOwner.some((event) => event.object_type === 'reminder')).toBe(true);
+    const byOther = (await as(other).get('/api/v1/activities?limit=50')).body.results as Array<{ object_type: string }>;
+    expect(byOther.some((event) => event.object_type === 'reminder')).toBe(false);
+  });
+
+  it('a reminder due with anything after its date is refused', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const { real } = await run(owner, [command('item_add', { content: 'Due', project_id: inbox }, { temp_id: tempId(35) })]);
+    const bad = await run(owner, [command('reminder_add', { item_id: real(35), type: 'absolute', due: { date: '2026-01-01junk' } }, { temp_id: tempId(36) })]);
+    expect(bad.statuses[0]).toMatchObject({ error_tag: 'INVALID_DATE' });
+  });
+
+  it('joining a project does not name a folder the person cannot see', async () => {
+    const owner = await person(base);
+    const guest = await person(base);
+    const made = await run(owner, [
+      command('workspace_add', { name: 'Folder hall' }, { temp_id: tempId(40) }),
+      command('folder_add', { name: 'Hidden', workspace_id: tempId(40) }, { temp_id: tempId(41) }),
+      command('project_add', { name: 'Shared hall' }, { temp_id: tempId(42) }),
+      command('project_move_to_workspace', { project_id: tempId(42), workspace_id: tempId(40) }),
+      command('project_update', { id: tempId(42), folder_id: tempId(41) }),
+    ]);
+    await run(owner, [share(made.real(42), guest)]);
+    const joined = await as(guest).post(`/api/v1/projects/${made.real(42)}/join`);
+    expect(joined.status).toBe(200);
+    expect(joined.body.folder).toBeNull();
+  });
+
+  it('a subtask is in its parent’s section, whatever section it names', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Sections' }, { temp_id: tempId(50) }),
+      command('section_add', { name: 'First', project_id: tempId(50) }, { temp_id: tempId(51) }),
+      command('section_add', { name: 'Second', project_id: tempId(50) }, { temp_id: tempId(52) }),
+      command('item_add', { content: 'Parent', project_id: tempId(50), section_id: tempId(51) }, { temp_id: tempId(53) }),
+      command('item_add', { content: 'Child', parent_id: tempId(53), section_id: tempId(52) }, { temp_id: tempId(54) }),
+    ]);
+    expect(made.statuses.filter((status) => (status as { error_code?: number }).error_code !== undefined)).toEqual([]);
+    const items = (await as(owner).sync({ types: ['items'] })).body.items as Array<{ content: string; section_id: string | null }>;
+    expect(items.find((item) => item.content === 'Parent')?.section_id).toBe(made.real(51));
+    expect(items.find((item) => item.content === 'Child')?.section_id).toBe(made.real(51));
+  });
+
+  it('a project admin cannot move a project into a workspace', async () => {
+    const owner = await person(base);
+    const admin = await person(base);
+    const made = await run(owner, [
+      command('workspace_add', { name: 'Target hall' }, { temp_id: tempId(60) }),
+      command('project_add', { name: 'Owned by one' }, { temp_id: tempId(61) }),
+    ]);
+    const hall = made.real(60);
+    const project = made.real(61);
+    await run(owner, [command('workspace_invite', { workspace_id: hall, email: admin.email, role: 'ADMIN' })]);
+    await acceptFirst(admin);
+    await run(owner, [share(project, admin, 'ADMIN')]);
+    await acceptFirst(admin);
+    const moved = await run(admin, [command('project_move_to_workspace', { project_id: project, workspace_id: hall })]);
+    expect(moved.statuses[0]).toMatchObject({ error_tag: 'PROJECT_ROLE_TOO_LOW' });
+    expect((await as(admin).get(`/api/v1/projects/${project}`)).body.workspace_id ?? null).toBeNull();
+  });
+
+  it('a null color or section order keeps the one there is', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Keep colour' }, { temp_id: tempId(70) }),
+      command('section_add', { name: 'Keep order', project_id: tempId(70) }, { temp_id: tempId(71) }),
+    ]);
+    const project = made.real(70);
+    const section = made.real(71);
+    const color = (await as(owner).get(`/api/v1/projects/${project}`)).body.color;
+    const orderOf = async () => ((await as(owner).sync({ types: ['sections'] })).body.sections as Array<{ id: string; section_order: number }>)
+      .find((row) => row.id === section)?.section_order;
+    const order = await orderOf();
+    const nulled = await run(owner, [
+      command('project_update', { id: project, color: null }),
+      command('section_update', { id: section, section_order: null }),
+    ]);
+    expect(nulled.statuses).not.toContainEqual(expect.objectContaining({ error_code: 500 }));
+    expect((await as(owner).get(`/api/v1/projects/${project}`)).body.color).toBe(color);
+    expect(await orderOf()).toBe(order);
+  });
+
+  it('a CSV import reads a fractional indent as the whole one, and keeps the time of a due', async () => {
+    const who = await person(base);
+    const project = await as(who).post('/api/v1/projects', { name: 'Fractions' });
+    const csv = 'TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE\ntask,Parent,,1,1,,,,,\ntask,Child,,1,1.5,,,2026-03-01T09:30,,\n';
+    const form = new FormData();
+    form.append('file', new Blob([csv], { type: 'text/csv' }), 'plan.csv');
+    const reply = await fetch(`${server.base}/api/v1/projects/${project.body.id as string}/import`, { method: 'POST', headers: { authorization: `Bearer ${who.token}` }, body: form });
+    expect(reply.status).toBe(200);
+    const body = (await reply.json()) as { tasks: Array<{ content: string; due: { string: string } | null }> };
+    expect(body.tasks.map((task) => task.content)).toEqual(['Parent', 'Child']);
+    expect(body.tasks.find((task) => task.content === 'Child')?.due?.string).toBe('2026-03-01T09:30');
+  });
+
+  it('a body or a command that is not an object is refused, not a server error', async () => {
+    const owner = await person(base);
+    const reply = await fetch(`${server.base}/api/v1/tasks`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${owner.token}`, 'content-type': 'application/json' },
+      body: '"just a string"',
+    });
+    expect(reply.status).toBe(400);
+    const sent = await as(owner).sync({ commands: [{ type: 'item_add', uuid: 'primitive-args', args: 5 }] });
+    expect(Object.values(sent.body.sync_status)).toEqual([expect.objectContaining({ error_tag: 'INVALID_ARGUMENT' })]);
+  });
+
+  it('a shared label rename refuses a blank or over-long name', async () => {
+    const owner = await person(base);
+    const blank = await as(owner).post('/api/v1/labels/shared/rename', { name: 'work', new_name: '   ' });
+    expect(blank.status).toBe(400);
+    const long = await as(owner).post('/api/v1/labels/shared/rename', { name: 'work', new_name: 'x'.repeat(121) });
+    expect(long.status).toBe(400);
+  });
+});
+
 describe('a CSV import', () => {
   it('keeps a subtask in its parent\'s section', async () => {
     const who = await person(base);

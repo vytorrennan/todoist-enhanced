@@ -146,7 +146,7 @@ function importRows(db: Db, viewer: UserRow, projectId: string | null, text: str
       if (section) made.sections.push(section);
       stack.length = 0; last = null;
     } else if (kind === 'task') {
-      const indent = Math.max(1, Math.min(Number(row[4]) || 1, stack.length + 1, 20));
+      const indent = Math.max(1, Math.min(Math.trunc(Number(row[4]) || 1), stack.length + 1, 20));
       const parent = indent > 1 ? stack[indent - 2] : null;
       const priority = Math.min(4, Math.max(1, Math.trunc(Number(row[3]) || 1)));
       const content = (row[1] ?? '').trim() || 'Task';
@@ -154,7 +154,7 @@ function importRows(db: Db, viewer: UserRow, projectId: string | null, text: str
       if (parent) args.parent_id = parent;
       if (section) args.section_id = section;
       const due = (row[7] ?? '').trim();
-      if (ISO_DUE.test(due)) args.due = { date: due, string: due.slice(0, 10), lang: row[8] || 'en' };
+      if (ISO_DUE.test(due)) args.due = { date: due, string: due, lang: row[8] || 'en' };
       else if (due && RECURRING.test(due) && ruleFromString(due)) args.due = { string: due, lang: row[8] || 'en', is_recurring: true };
       else if (due) {
         const reading = readNaturalDate(due, new Date(`${todayIn(viewer.timezone)}T12:00:00`), { locale: 'en' });

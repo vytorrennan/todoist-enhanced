@@ -62,11 +62,12 @@ export function admitWorkspaceMembers(db: Db, projectId: string, workspaceId: st
 /**
  * Moves a project (with its subprojects) into a workspace, at its top level.
  * Its visibility stays as it is: a restricted project stays restricted, and
- * opening it to the team is a separate, deliberate change.
+ * opening it to the team is a separate, deliberate change. Only the owner
+ * moves a project: a move decides who can see it.
  */
 export function moveProjectToWorkspace(ctx: Ctx, id: string, workspaceId: string): void {
   const { db, viewer } = ctx;
-  requireProject(db, id, viewer.id, 'admin');
+  requireProject(db, id, viewer.id, 'owner');
   if (requireWorkspace(db, workspaceId, viewer.id) === 'GUEST') {
     throw ApiFailure.forbidden('Guests cannot add projects to a workspace.', 'WORKSPACE_ROLE_TOO_LOW');
   }
@@ -74,7 +75,7 @@ export function moveProjectToWorkspace(ctx: Ctx, id: string, workspaceId: string
   if (project.is_inbox) throw ApiFailure.badRequest('The Inbox stays where it is.', 'INBOX');
   if (project.workspace_id === workspaceId) return;
   const tree = projectTree(db, id);
-  for (const projectId of tree) requireProject(db, projectId, viewer.id, 'admin');
+  for (const projectId of tree) requireProject(db, projectId, viewer.id, 'owner');
   for (const projectId of tree) {
     // The team it came from no longer gives anything; the new team gives what its visibility allows.
     revokeWorkspaceGrants(db, projectId);
@@ -92,12 +93,12 @@ export function moveProjectToWorkspace(ctx: Ctx, id: string, workspaceId: string
  */
 export function moveProjectToPersonal(ctx: Ctx, id: string): void {
   const { db, viewer } = ctx;
-  requireProject(db, id, viewer.id, 'admin');
+  requireProject(db, id, viewer.id, 'owner');
   const project = db.prepare('SELECT is_inbox, workspace_id FROM projects WHERE id = ?').get(id) as { is_inbox: number; workspace_id: string | null };
   if (project.is_inbox) throw ApiFailure.badRequest('The Inbox stays where it is.', 'INBOX');
   if (!project.workspace_id) return;
   const tree = projectTree(db, id);
-  for (const projectId of tree) requireProject(db, projectId, viewer.id, 'admin');
+  for (const projectId of tree) requireProject(db, projectId, viewer.id, 'owner');
   for (const projectId of tree) {
     // The team's grants end with the team. The owner's own invitations and grants stay: they were made by hand.
     revokeWorkspaceGrants(db, projectId);
@@ -160,7 +161,8 @@ export function updateProject(ctx: Ctx, args: Args): void {
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow;
   const content: Record<string, unknown> = {};
   if ('name' in args) content.name = text(args, 'name', { required: true, max: MAX_NAME });
-  if ('color' in args) content.color = cleanColor(args.color);
+  // A color that is not given, or is null, keeps the one the project has: every project has a color.
+  if ('color' in args) content.color = cleanColor(args.color) ?? project.color;
   if ('description' in args) content.description = text(args, 'description', { max: 20_000 }) ?? '';
   if ('view_style' in args && typeof args.view_style === 'string') content.view_style = args.view_style;
   if (Object.keys(content).length) {
@@ -320,7 +322,11 @@ export function updateSection(ctx: Ctx, args: Args): void {
   const set: Record<string, unknown> = {};
   if ('name' in args) set.name = text(args, 'name', { required: true, max: MAX_NAME });
   if ('description' in args) set.description = text(args, 'description', { max: 20_000 }) ?? '';
-  if ('section_order' in args) set.section_order = integer(args, 'section_order');
+  if ('section_order' in args) {
+    // A null order keeps the section where it is: every section has one.
+    const order = integer(args, 'section_order');
+    if (order !== undefined) set.section_order = order;
+  }
   if ('order_key' in args && typeof args.order_key === 'string') set.order_key = args.order_key;
   if ('collapsed' in args) set.collapsed = truthy(args.collapsed) ? 1 : 0;
   const keys = Object.keys(set);
