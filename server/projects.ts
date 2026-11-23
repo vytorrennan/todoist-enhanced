@@ -235,31 +235,21 @@ function moveProject(ctx: Ctx, id: string, parentArg: unknown): void {
       throw ApiFailure.badRequest('The Inbox cannot hold projects.', 'INBOX');
     }
   }
-  const project = db.prepare('SELECT workspace_id FROM projects WHERE id = ?').get(id) as { workspace_id: string | null };
+  const project = db.prepare('SELECT workspace_id, folder_id FROM projects WHERE id = ?').get(id) as { workspace_id: string | null; folder_id: string | null };
   if (parentId) {
     const parent = db.prepare('SELECT workspace_id FROM projects WHERE id = ?').get(parentId) as { workspace_id: string | null };
     if (parent.workspace_id !== project.workspace_id) throw ApiFailure.badRequest('A project nests in a project of the same workspace.', 'PARENT_IN_OTHER_WORKSPACE');
+    // Nesting takes a filed project out of its folder, so, as with filing and unfiling, a guest does not do it.
+    if (project.folder_id && project.workspace_id) {
+      const role = workspaceRole(db, project.workspace_id, viewer.id);
+      if (!role || role === 'GUEST') throw ApiFailure.forbidden('Guests do not arrange the folders of a workspace.', 'WORKSPACE_ROLE_TOO_LOW');
+    }
   }
   db.prepare('UPDATE projects SET parent_id = ?, folder_id = CASE WHEN ? IS NULL THEN folder_id ELSE NULL END, seq = ? WHERE id = ?')
     .run(parentId, parentId, nextSeq(db), id);
   const place = sidebarEnd(db, viewer.id, parentId);
   db.prepare('UPDATE project_members SET child_order = ?, order_key = ?, seq = ? WHERE project_id = ? AND user_id = ?')
     .run(place.child_order, place.order_key, nextSeq(db), id, viewer.id);
-}
-
-/**
- * Numbers a person's projects under one parent 1, 2, 3 in the order they now have, with keys that agree with the
- * numbers, so the two sorts give the same order.
- */
-function renumberProjects(db: Db, userId: string, parentId: string | null): void {
-  const rows = db.prepare(`SELECT m.project_id FROM project_members m JOIN projects p ON p.id = m.project_id
-    WHERE m.user_id = ? AND m.state = 'active' AND p.is_deleted = 0 AND p.parent_id IS ?
-    ORDER BY m.child_order, m.project_id`).all(userId, parentId) as Array<{ project_id: string }>;
-  const keys = keysInOrder(rows.length);
-  rows.forEach((row, index) => {
-    db.prepare('UPDATE project_members SET child_order = ?, order_key = ?, seq = ? WHERE project_id = ? AND user_id = ?')
-      .run(index + 1, keys[index], nextSeq(db), row.project_id, userId);
-  });
 }
 
 export function reorderProjects(ctx: Ctx, args: Args): void {
@@ -270,7 +260,7 @@ export function reorderProjects(ctx: Ctx, args: Args): void {
   if (keys.some((key) => key !== undefined) && keys.some((key) => key === undefined)) {
     throw ApiFailure.badRequest('Name an order key for every project in the order, or for none.', 'MIXED_ORDER_KEYS');
   }
-  const parents = new Set<string | null>();
+  const placed: Array<{ id: string; childOrder: number; position: number }> = [];
   entries.forEach((entry, index) => {
     if (!entry || typeof entry !== 'object') throw ApiFailure.badRequest('Each project order names a project.', 'INVALID_ARGUMENT');
     const id = resolveId(ctx, entry.id);
@@ -281,10 +271,18 @@ export function reorderProjects(ctx: Ctx, args: Args): void {
     db.prepare('UPDATE project_members SET child_order = ?, order_key = ?, seq = ? WHERE project_id = ? AND user_id = ?').run(
       childOrder, keys[index] ?? membership.order_key, nextSeq(db), id, viewer.id,
     );
-    parents.add((db.prepare('SELECT parent_id FROM projects WHERE id = ?').get(id) as { parent_id: string | null }).parent_id);
+    placed.push({ id, childOrder, position: index });
   });
-  // Without keys the numbers are the order: each affected group gets fresh numbers and keys that agree.
-  if (keys.every((key) => key === undefined)) for (const parent of parents) renumberProjects(db, viewer.id, parent);
+  // Without keys the numbers are the order: the projects named get keys in that order, so the two sorts agree.
+  // Projects not named keep their place, in whatever list they are.
+  if (placed.length > 0 && keys.every((key) => key === undefined)) {
+    const ordered = [...placed].sort((a, b) => a.childOrder - b.childOrder || a.position - b.position);
+    const newKeys = keysInOrder(ordered.length);
+    ordered.forEach((project, index) => {
+      db.prepare('UPDATE project_members SET order_key = ?, seq = ? WHERE project_id = ? AND user_id = ?')
+        .run(newKeys[index], nextSeq(db), project.id, viewer.id);
+    });
+  }
 }
 
 /** Archives a project and everything under it. The inbox cannot be archived. */

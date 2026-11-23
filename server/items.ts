@@ -364,15 +364,23 @@ export function reorderItems(ctx: Ctx, args: Args): void {
     if (order === undefined) throw ApiFailure.badRequest('A child order is a whole number.', 'INVALID_ARGUMENT');
     return { row, order };
   });
-  const group = rows[0].row;
-  const siblings = db.prepare(`SELECT id, child_order, order_key FROM items
-      WHERE project_id = ? AND is_deleted = 0 AND section_id IS ? AND parent_id IS ?`)
-    .all(group.project_id, group.section_id, group.parent_id) as Array<{ id: string; child_order: number; order_key: string | null }>;
-  const requested = new Map(rows.map(({ row, order }) => [row.id, order]));
-  const sortKey = (row: { id: string; child_order: number }) => requested.get(row.id) ?? row.child_order;
-  const ordered = [...siblings].sort((a, b) => sortKey(a) - sortKey(b) || a.child_order - b.child_order).map((row) => row.id);
+  // Each group of siblings (a project, a section and a parent) is ordered on its own, so a reorder that spans groups orders each one.
+  const groups = new Map<string, Array<{ row: ItemRow; order: number }>>();
+  for (const entry of rows) {
+    const key = JSON.stringify([entry.row.project_id, entry.row.section_id, entry.row.parent_id]);
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
   const sequence = () => nextSeq(db);
-  renumber(db, 'items', siblings, ordered, sequence);
+  for (const members of groups.values()) {
+    const group = members[0].row;
+    const siblings = db.prepare(`SELECT id, child_order, order_key FROM items
+        WHERE project_id = ? AND is_deleted = 0 AND section_id IS ? AND parent_id IS ?`)
+      .all(group.project_id, group.section_id, group.parent_id) as Array<{ id: string; child_order: number; order_key: string | null }>;
+    const requested = new Map(members.map(({ row, order }) => [row.id, order]));
+    const sortKey = (row: { id: string; child_order: number }) => requested.get(row.id) ?? row.child_order;
+    const ordered = [...siblings].sort((a, b) => sortKey(a) - sortKey(b) || a.child_order - b.child_order).map((row) => row.id);
+    renumber(db, 'items', siblings, ordered, sequence);
+  }
 }
 
 export function updateDayOrders(ctx: Ctx, args: Args): void {

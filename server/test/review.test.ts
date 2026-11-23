@@ -588,6 +588,82 @@ describe('the sixth review', () => {
   });
 });
 
+/** The seventh review: each test fails without the fix it names. */
+describe('the seventh review', () => {
+  const projectsOf = async (who: Person) => (await as(who).sync({ types: ['projects'] })).body.projects as Array<{ id: string; order_key: string | null }>;
+
+  it('reordering some projects leaves the others where they were placed', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Left' }, { temp_id: tempId(210) }),
+      command('project_add', { name: 'Right' }, { temp_id: tempId(211) }),
+      command('project_add', { name: 'Between' }, { temp_id: tempId(212) }),
+    ]);
+    const left = made.real(210);
+    const right = made.real(211);
+    const between = made.real(212);
+    const before = await projectsOf(owner);
+    const placedKey = keyBetween(before.find((p) => p.id === left)?.order_key ?? null, before.find((p) => p.id === right)?.order_key ?? null);
+    await run(owner, [command('project_update', { id: between, order_key: placedKey })]);
+    const placedBefore = (await projectsOf(owner)).find((p) => p.id === between)?.order_key;
+    const reordered = await run(owner, [command('project_reorder', { projects: [{ id: right, child_order: 1 }, { id: left, child_order: 2 }] })]);
+    expect(reordered.statuses).toEqual(['ok']);
+    expect((await projectsOf(owner)).find((p) => p.id === between)?.order_key).toBe(placedBefore);
+  });
+
+  it('a workspace guest cannot nest a project that is filed in a folder, which would take it out', async () => {
+    const owner = await person(base);
+    const member = await person(base);
+    const made = await run(owner, [
+      command('workspace_add', { name: 'Nest hall' }, { temp_id: tempId(220) }),
+      command('folder_add', { name: 'Keep', workspace_id: tempId(220) }, { temp_id: tempId(221) }),
+    ]);
+    const hall = made.real(220);
+    const folder = made.real(221);
+    await run(owner, [command('workspace_invite', { workspace_id: hall, email: member.email, role: 'MEMBER' })]);
+    await acceptFirst(member);
+    const mine = await run(member, [
+      command('project_add', { name: 'Filed', workspace_id: hall }, { temp_id: tempId(222) }),
+      command('project_add', { name: 'Host', workspace_id: hall }, { temp_id: tempId(223) }),
+      command('project_update', { id: tempId(222), folder_id: folder }),
+    ]);
+    expect(mine.statuses).toEqual(['ok', 'ok', 'ok']);
+    const demoted = await as(owner).post(`/api/v1/workspaces/${hall}/users/${member.id}`, { role: 'GUEST' });
+    expect(demoted.status).toBe(200);
+    const nested = await run(member, [command('project_move', { id: mine.real(222), parent_id: mine.real(223) })]);
+    expect(nested.statuses[0]).toMatchObject({ error_tag: 'WORKSPACE_ROLE_TOO_LOW' });
+    const filed = (await as(member).get(`/api/v1/projects/${mine.real(222)}`)).body.folder_id;
+    expect(filed).toBe(folder);
+  });
+
+  it('a reorder that spans sections orders each section', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Two sections' }, { temp_id: tempId(230) }),
+      command('section_add', { name: 'One', project_id: tempId(230) }, { temp_id: tempId(231) }),
+      command('section_add', { name: 'Two', project_id: tempId(230) }, { temp_id: tempId(232) }),
+      command('item_add', { content: 'A1', project_id: tempId(230), section_id: tempId(231) }, { temp_id: tempId(233) }),
+      command('item_add', { content: 'A2', project_id: tempId(230), section_id: tempId(231) }, { temp_id: tempId(234) }),
+      command('item_add', { content: 'B1', project_id: tempId(230), section_id: tempId(232) }, { temp_id: tempId(235) }),
+      command('item_add', { content: 'B2', project_id: tempId(230), section_id: tempId(232) }, { temp_id: tempId(236) }),
+    ]);
+    const reversed = await run(owner, [command('item_reorder', {
+      items: [
+        { id: made.real(234), child_order: 1 }, { id: made.real(233), child_order: 2 },
+        { id: made.real(236), child_order: 1 }, { id: made.real(235), child_order: 2 },
+      ],
+    })]);
+    expect(reversed.statuses).toEqual(['ok']);
+    const items = (await as(owner).sync({ types: ['items'] })).body.items as Array<{ content: string; section_id: string | null; child_order: number }>;
+    const inSection = (section: string) => items
+      .filter((item) => item.section_id === section)
+      .sort((a, b) => a.child_order - b.child_order)
+      .map((item) => item.content);
+    expect(inSection(made.real(231))).toEqual(['A2', 'A1']);
+    expect(inSection(made.real(232))).toEqual(['B2', 'B1']);
+  });
+});
+
 describe('a CSV import', () => {
   it('keeps a subtask in its parent\'s section', async () => {
     const who = await person(base);
