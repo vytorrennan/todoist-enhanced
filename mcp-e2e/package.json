@@ -1,0 +1,19 @@
+{
+  "name": "todoist-enhanced-mcp-e2e",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests: the official Todoist MCP server, run against this server through TODOIST_BASE_URL.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@todoist/mcp": "17.3.8",
+    "@types/node": "24.19.2",
+    "vitest": "^3.2.7"
+  }
+}

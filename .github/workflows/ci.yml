@@ -26,6 +26,28 @@ jobs:
       - run: npm run build:server
       - run: npm run check:bundle
 
+  # The official Todoist MCP server, run against the built server, and the backup and restore procedure in
+  # docs/deploying.md. The MCP server needs Node 24, so this job does not share the check job's Node 22.
+  mcp-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mcp-e2e/package-lock.json
+      - run: npm ci
+      - run: npm run build:server
+      - run: npm --prefix mcp-e2e ci
+      - run: npm --prefix mcp-e2e run typecheck
+      - name: The sqlite3 tool the backup procedure uses
+        run: sudo apt-get install -y sqlite3
+      - run: npm --prefix mcp-e2e test
+
   # The demo journeys, in a real browser. On pull requests, and by hand from
   # the Actions tab before tagging a release.
   e2e:

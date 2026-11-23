@@ -3,6 +3,7 @@ import { activeMembership, canBeAssigned, requireProject, visibleSql } from './a
 import { requireFullSyncFor } from './sharing';
 import { type Args, type Ctx, endOfList, id as idArg, orderKeyArg, orderNumberArg, renumber, resolveId, text, truthy, wholeNumber } from './ctx';
 import { advanceRecurring, resolveDue, type StoredDue } from './recurrence';
+import { dueFromCommand } from './due';
 import { isDay } from './dates';
 import { type ItemRow } from './serialize';
 
@@ -144,7 +145,7 @@ export function addItem(ctx: Ctx, args: Args, tempId?: string): void {
   const priority = cleanPriority(args.priority) ?? 1;
   // A subtask is in its parent's section, as a moved one is; a section it names is not used.
   const section = parent ? parentSection : checkSection(ctx, projectId, args.section_id);
-  const due = resolveDue(args.due as Parameters<typeof resolveDue>[0], ctx.today);
+  const due = resolveDue(dueFromCommand(args.due, ctx.viewer) as Parameters<typeof resolveDue>[0], ctx.today);
   const deadline = cleanDeadline(args.deadline);
   const duration = cleanDuration(args.duration);
   const labels = cleanLabels(args.labels);
@@ -193,7 +194,7 @@ export function updateItem(ctx: Ctx, args: Args): void {
   if ('description' in args) set.description = text(args, 'description', { max: MAX_DESCRIPTION }) ?? '';
   if ('priority' in args) set.priority = cleanPriority(args.priority) ?? 1;
   if ('due' in args) {
-    const due = resolveDue(args.due as Parameters<typeof resolveDue>[0], ctx.today);
+    const due = resolveDue(dueFromCommand(args.due, ctx.viewer) as Parameters<typeof resolveDue>[0], ctx.today);
     Object.assign(set, storedDue(due));
   }
   if ('deadline' in args) {

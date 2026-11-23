@@ -72,14 +72,47 @@ curl -sI http://127.0.0.1:8787/ | grep -i content-security-policy
 
 ## Backups
 
-The database is one file in WAL mode. Copy it while the server runs with SQLite's
-own backup, which is consistent even under writes:
+The database is one file in WAL mode. Back it up while the server runs, with
+SQLite's own backup, which is consistent even under writes. Copy the database
+first and the files second:
 
 ```bash
-sqlite3 /var/lib/enhanced/enhanced.db ".backup '/backups/enhanced-$(date +%F).db'"
+mkdir -p /backups/2026-11-23
+sqlite3 /var/lib/enhanced/enhanced.db ".backup '/backups/2026-11-23/enhanced.db'"
+cp -r /var/lib/enhanced/files /backups/2026-11-23/files
 ```
 
-Back up `DATA_DIR/files` at the same time: comments refer to those files by id.
+Comments refer to uploaded files by id. A file is written before the comment that
+carries it is saved, and a comment's file is never deleted afterwards, so the
+folder copied second holds every file the database copied first refers to. (A
+CSV import's upload is removed once it is imported; no comment refers to it.)
+
+## Restoring
+
+Restore into a stopped server, so no write lands between the two copies:
+
+1. Stop the server.
+2. Replace the database and the files. Remove the old `-wal` and `-shm` files
+   first: they belong to the database being replaced, and SQLite would apply them
+   to the restored one.
+
+   ```bash
+   rm -f /var/lib/enhanced/enhanced.db-wal /var/lib/enhanced/enhanced.db-shm
+   cp /backups/2026-11-23/enhanced.db /var/lib/enhanced/enhanced.db
+   rm -rf /var/lib/enhanced/files
+   cp -r /backups/2026-11-23/files /var/lib/enhanced/files
+   ```
+
+3. Start the server, then check the database and the server:
+
+   ```bash
+   sqlite3 /var/lib/enhanced/enhanced.db "PRAGMA integrity_check;"  # ok
+   curl -s http://127.0.0.1:8787/api/v1/health
+   ```
+
+A restore takes the database back to the moment of the backup. Anything saved
+after it is lost, and so is any sign-out made after it: the sessions in the
+backup are signed in again until they expire.
 
 ## Upgrading
 
