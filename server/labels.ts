@@ -1,5 +1,5 @@
 import { ApiFailure, type Db, newId, nextSeq } from './db';
-import { type Args, type Ctx, endOfList, id as idArg, renumber, resolveId, text, truthy } from './ctx';
+import { type Args, type Ctx, endOfList, id as idArg, orderKeyArg, renumber, resolveId, text, truthy } from './ctx';
 import { checkFilterQuery, runFilter } from './filterQuery';
 import { parseLabels } from './serialize';
 
@@ -63,7 +63,7 @@ export function addLabel(ctx: Ctx, args: Args, tempId?: string): void {
   const end = endOfList(db, 'labels', 'user_id = ? AND is_deleted = 0', [viewer.id], 'order_key', 'item_order');
   db.prepare(`INSERT INTO labels (id, user_id, name, color, item_order, order_key, is_favorite, is_deleted, seq)
     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`).run(
-    id, viewer.id, name, cleanColor(args.color) ?? 'charcoal', end.order, typeof args.order_key === 'string' ? args.order_key : end.key,
+    id, viewer.id, name, cleanColor(args.color) ?? 'charcoal', end.order, orderKeyArg(args.order_key) ?? end.key,
     truthy(args.is_favorite) ? 1 : 0, nextSeq(db),
   );
 }
@@ -137,7 +137,7 @@ export function addFilter(ctx: Ctx, args: Args, tempId?: string): void {
   db.prepare(`INSERT INTO filters (id, user_id, name, query, description, color, item_order, order_key, is_favorite, is_deleted, seq)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`).run(
     id, viewer.id, name, query, text(args, 'description', { max: 2000 }) ?? '', cleanColor(args.color) ?? 'charcoal',
-    typeof args.item_order === 'number' ? args.item_order : end.order, typeof args.order_key === 'string' ? args.order_key : end.key,
+    typeof args.item_order === 'number' ? args.item_order : end.order, orderKeyArg(args.order_key) ?? end.key,
     truthy(args.is_favorite) ? 1 : 0, nextSeq(db),
   );
 }
@@ -156,9 +156,8 @@ export function updateFilter(ctx: Ctx, args: Args): void {
   if ('is_favorite' in args) set.is_favorite = truthy(args.is_favorite) ? 1 : 0;
   if ('item_order' in args && typeof args.item_order === 'number') set.item_order = args.item_order;
   // A filter moved in the list gets a new key between its neighbours; the key is kept, not ignored.
-  if ('order_key' in args && typeof args.order_key === 'string' && args.order_key.length > 0 && args.order_key.length <= 64) {
-    set.order_key = args.order_key;
-  }
+  const filterOrderKey = orderKeyArg(args.order_key);
+  if (filterOrderKey !== undefined) set.order_key = filterOrderKey;
   const keys = Object.keys(set);
   if (keys.length) {
     ctx.db.prepare(`UPDATE filters SET ${keys.map((key) => `${key} = @${key}`).join(', ')}, seq = @seq WHERE id = @id`)

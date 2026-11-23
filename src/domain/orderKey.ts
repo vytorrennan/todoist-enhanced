@@ -76,6 +76,17 @@ function validate(key: string): void {
   if (fraction.endsWith(ZERO)) throw new Error(`Invalid order key: ${key}`);
 }
 
+/** Whether a string is a key this module makes: base-62 characters, and a shape `validate` accepts. */
+export function isOrderKey(key: string): boolean {
+  if (key.length === 0 || key.length > 64 || ![...key].every((char) => DIGITS.includes(char))) return false;
+  try {
+    validate(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** A fraction strictly between `a` and `b` (`b` null meaning "no upper bound"). */
 function midpoint(a: string, b: string | null): string {
   if (b !== null && a >= b) throw new Error(`${a} >= ${b}`);

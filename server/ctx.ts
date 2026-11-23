@@ -1,4 +1,4 @@
-import { keyBetween, keysInOrder } from '../src/domain/orderKey';
+import { isOrderKey, keyBetween, keysInOrder } from '../src/domain/orderKey';
 import { ApiFailure, type Db, newId, nextSeq, nowIso } from './db';
 import type { UserRow } from './auth';
 import { todayIn } from './dates';
@@ -63,6 +63,23 @@ export function integer(args: Args, key: string, options: { min?: number; max?: 
   if (options.min !== undefined && number < options.min) throw ApiFailure.badRequest(`“${key}” is too small.`);
   if (options.max !== undefined && number > options.max) throw ApiFailure.badRequest(`“${key}” is too large.`);
   return number;
+}
+
+/** A whole number from a client: a number, or a string of digits. Null, blank, true and the like are not one; nothing is coerced. */
+export function wholeNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isSafeInteger(value) ? value : undefined;
+  if (typeof value === 'string' && /^-?\d+$/.test(value)) {
+    const number = Number(value);
+    return Number.isSafeInteger(number) ? number : undefined;
+  }
+  return undefined;
+}
+
+/** A client's order key, if it is one this server makes. A malformed key is refused, so it never sits among its siblings to break a later placement. */
+export function orderKeyArg(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (!isOrderKey(value)) throw ApiFailure.badRequest('That order key is not one this app makes.', 'INVALID_ORDER_KEY');
+  return value;
 }
 
 export const truthy = (value: unknown): boolean => value === true || value === 1 || value === 'true';

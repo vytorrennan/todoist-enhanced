@@ -426,6 +426,76 @@ describe('the fourth review', () => {
   });
 });
 
+/** The fifth review: each test fails without the fix it names. */
+describe('the fifth review', () => {
+  const share = (project: string, who: Person, role = 'READ_WRITE') =>
+    command('share_project', { project_id: project, email: who.email, role });
+
+  it('a malformed order key is refused, and the next task is still added among its siblings', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const bad = await run(owner, [command('item_add', { content: 'Malformed', project_id: inbox, order_key: 'not a key!' }, { temp_id: tempId(130) })]);
+    expect(bad.statuses[0]).toMatchObject({ error_tag: 'INVALID_ORDER_KEY' });
+    const next = await run(owner, [command('item_add', { content: 'Ordinary', project_id: inbox }, { temp_id: tempId(131) })]);
+    expect(next.statuses).toEqual(['ok']);
+    const badOrder = await run(owner, [command('project_reorder', { projects: [{ id: inbox, order_key: 'zz!' }] })]);
+    expect(badOrder.statuses[0]).toMatchObject({ error_tag: 'INVALID_ORDER_KEY' });
+  });
+
+  it('a workspace guest cannot file a project in a folder', async () => {
+    const owner = await person(base);
+    const guest = await person(base);
+    const made = await run(owner, [
+      command('workspace_add', { name: 'Guest hall' }, { temp_id: tempId(140) }),
+      command('folder_add', { name: 'Team folder', workspace_id: tempId(140) }, { temp_id: tempId(141) }),
+      command('project_add', { name: 'Guest project' }, { temp_id: tempId(142) }),
+      command('project_move_to_workspace', { project_id: tempId(142), workspace_id: tempId(140) }),
+    ]);
+    await run(owner, [command('workspace_invite', { workspace_id: made.real(140), email: guest.email, role: 'GUEST' })]);
+    await acceptFirst(guest);
+    await run(owner, [share(made.real(142), guest, 'ADMIN')]);
+    await acceptFirst(guest);
+    const filed = await run(guest, [command('project_update', { id: made.real(142), folder_id: made.real(141) })]);
+    expect(filed.statuses[0]).toMatchObject({ error_tag: 'FOLDER_NOT_IN_WORKSPACE' });
+  });
+
+  it('an order that is null, blank or true is refused, not stored as zero or one', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const { real } = await run(owner, [command('item_add', { content: 'Numbered', project_id: inbox }, { temp_id: tempId(150) })]);
+    const nulled = await run(owner, [command('item_update_day_orders', { ids_to_orders: { [real(150)]: null } })]);
+    expect(nulled.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const blank = await run(owner, [command('item_reorder', { items: [{ id: real(150), child_order: '' }] })]);
+    expect(blank.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const truth = await run(owner, [command('project_reorder', { projects: [{ id: inbox, child_order: true }] })]);
+    expect(truth.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+  });
+
+  it('an item order with a null entry is refused rather than a server error', async () => {
+    const owner = await person(base);
+    const bad = await run(owner, [command('item_reorder', { items: [null] })]);
+    expect(bad.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+  });
+
+  it('a person removed from a project is not sent the removal of a reminder in it', async () => {
+    const owner = await person(base);
+    const member = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Left behind' }, { temp_id: tempId(160) }),
+      command('item_add', { content: 'Left task', project_id: tempId(160) }, { temp_id: tempId(161) }),
+    ]);
+    await run(owner, [share(made.real(160), member)]);
+    await acceptFirst(member);
+    const set = await as(owner).post('/api/v1/reminders', { task_id: made.real(161), minute_offset: 10, notify_uid: member.id });
+    expect(set.status).toBe(200);
+    await run(owner, [command('delete_collaborator', { project_id: made.real(160), email: member.email })]);
+    const afterRemoval = await as(member).sync({ types: ['reminders'] });
+    await run(owner, [command('item_delete', { id: made.real(161) })]);
+    const next = await as(member).sync({ types: ['reminders'], token: afterRemoval.body.sync_token as string });
+    expect(next.body.reminders).not.toContainEqual(expect.objectContaining({ id: set.body.id }));
+  });
+});
+
 describe('a CSV import', () => {
   it('keeps a subtask in its parent\'s section', async () => {
     const who = await person(base);

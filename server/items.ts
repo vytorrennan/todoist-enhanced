@@ -1,7 +1,7 @@
 import { ApiFailure, type Db, newId, nextSeq } from './db';
 import { activeMembership, canBeAssigned, requireProject, visibleSql } from './access';
 import { requireFullSyncFor } from './sharing';
-import { type Args, type Ctx, endOfList, id as idArg, integer, renumber, resolveId, text, truthy } from './ctx';
+import { type Args, type Ctx, endOfList, id as idArg, integer, orderKeyArg, renumber, resolveId, text, truthy, wholeNumber } from './ctx';
 import { advanceRecurring, resolveDue, type StoredDue } from './recurrence';
 import { isDay } from './dates';
 import { type ItemRow } from './serialize';
@@ -120,7 +120,7 @@ function placement(ctx: Ctx, args: Args, projectId: string, sectionId: string | 
   const given = integer(args, 'child_order');
   return {
     child_order: given ?? end.order,
-    order_key: typeof args.order_key === 'string' ? args.order_key : end.key,
+    order_key: orderKeyArg(args.order_key) ?? end.key,
   };
 }
 
@@ -354,9 +354,12 @@ export function reorderItems(ctx: Ctx, args: Args): void {
   const entries = Array.isArray(args.items) ? args.items as Array<{ id?: unknown; child_order?: unknown }> : [];
   if (entries.length === 0) return;
   const rows = entries.map((entry) => {
+    if (!entry || typeof entry !== 'object') throw ApiFailure.badRequest('Each item order names a task.', 'INVALID_ARGUMENT');
     const row = loadItem(ctx, resolveId(ctx, entry.id));
     requireProject(db, row.project_id, ctx.viewer.id, 'write');
-    return { row, order: Number(entry.child_order) };
+    const order = wholeNumber(entry.child_order);
+    if (order === undefined) throw ApiFailure.badRequest('A child order is a whole number.', 'INVALID_ARGUMENT');
+    return { row, order };
   });
   const group = rows[0].row;
   const siblings = db.prepare(`SELECT id, child_order, order_key FROM items
@@ -380,8 +383,8 @@ export function updateDayOrders(ctx: Ctx, args: Args): void {
     })
     : Object.entries((raw ?? {}) as Record<string, unknown>);
   for (const [itemId, order] of pairs) {
-    const dayOrder = Number(order);
-    if (!Number.isInteger(dayOrder)) throw ApiFailure.badRequest('A day order is a whole number.', 'INVALID_ARGUMENT');
+    const dayOrder = wholeNumber(order);
+    if (dayOrder === undefined) throw ApiFailure.badRequest('A day order is a whole number.', 'INVALID_ARGUMENT');
     const row = loadItem(ctx, resolveId(ctx, itemId));
     requireProject(db, row.project_id, ctx.viewer.id, 'write');
     db.prepare('UPDATE items SET day_order = ?, seq = ? WHERE id = ?').run(dayOrder, nextSeq(db), row.id);

@@ -1,6 +1,6 @@
 import { ApiFailure, type Db, newId, nextSeq, nowIso } from './db';
 import { canBeAssigned, requireProject, requireWorkspace, workspaceRole } from './access';
-import { type Args, type Ctx, endOfList, id as idArg, integer, resolveId, text, truthy } from './ctx';
+import { type Args, type Ctx, endOfList, id as idArg, integer, orderKeyArg, resolveId, text, truthy, wholeNumber } from './ctx';
 import { requireFullSync, requireFullSyncFor, revokeWorkspaceGrants, setMembership } from './sharing';
 import { collaboratorOut, type ProjectRow, sectionOut } from './serialize';
 import { subtreeIds as itemSubtree } from './items';
@@ -149,7 +149,7 @@ export function addProject(ctx: Ctx, args: Args, tempId?: string): void {
   db.prepare(`INSERT INTO project_members (project_id, user_id, role, state, is_favorite, child_order, order_key, joined_at, seq)
     VALUES (?, ?, 'CREATOR', 'active', ?, ?, ?, ?, ?)`).run(
     id, viewer.id, truthy(args.is_favorite) ? 1 : 0, typeof args.child_order === 'number' ? args.child_order : place.child_order,
-    typeof args.order_key === 'string' ? args.order_key : place.order_key, ctx.now, nextSeq(db),
+    orderKeyArg(args.order_key) ?? place.order_key, ctx.now, nextSeq(db),
   );
   if (workspaceId && visibility === 'team') admitWorkspaceMembers(db, id, workspaceId);
 }
@@ -189,7 +189,9 @@ export function updateProject(ctx: Ctx, args: Args): void {
     if (folder) {
       const row = db.prepare('SELECT workspace_id FROM folders WHERE id = ? AND is_deleted = 0').get(folder) as { workspace_id: string } | undefined;
       // The folder must be in this project's workspace, and the person must be in that workspace to file the project in it.
-      if (!row || row.workspace_id !== project.workspace_id || !workspaceRole(db, row.workspace_id, viewer.id)) {
+      // A guest of the workspace does not arrange its folders: a member or an admin does.
+      const role = row ? workspaceRole(db, row.workspace_id, viewer.id) : null;
+      if (!row || row.workspace_id !== project.workspace_id || !role || role === 'GUEST') {
         throw ApiFailure.badRequest('That folder is not in this project’s workspace.', 'FOLDER_NOT_IN_WORKSPACE');
       }
     }
@@ -201,7 +203,8 @@ export function updateProject(ctx: Ctx, args: Args): void {
   if ('is_favorite' in args) own.is_favorite = truthy(args.is_favorite) ? 1 : 0;
   if ('collapsed' in args || 'is_collapsed' in args) own.collapsed = truthy(args.collapsed ?? args.is_collapsed) ? 1 : 0;
   if ('child_order' in args) own.child_order = integer(args, 'child_order') ?? membership.child_order;
-  if ('order_key' in args && typeof args.order_key === 'string') own.order_key = args.order_key;
+  const ownOrderKey = orderKeyArg(args.order_key);
+  if (ownOrderKey !== undefined) own.order_key = ownOrderKey;
   const ownKeys = Object.keys(own);
   if (ownKeys.length) {
     const assignments = ownKeys.map((key) => `${key} = @${key}`).join(', ');
@@ -245,11 +248,11 @@ export function reorderProjects(ctx: Ctx, args: Args): void {
     if (!entry || typeof entry !== 'object') throw ApiFailure.badRequest('Each project order names a project.', 'INVALID_ARGUMENT');
     const id = resolveId(ctx, entry.id);
     const membership = requireProject(db, id, viewer.id, 'read');
-    const childOrder = Number(entry.child_order ?? membership.child_order);
-    if (!Number.isInteger(childOrder)) throw ApiFailure.badRequest('A child order is a whole number.', 'INVALID_ARGUMENT');
+    const childOrder = wholeNumber(entry.child_order ?? membership.child_order);
+    if (childOrder === undefined) throw ApiFailure.badRequest('A child order is a whole number.', 'INVALID_ARGUMENT');
     db.prepare('UPDATE project_members SET child_order = ?, order_key = ?, seq = ? WHERE project_id = ? AND user_id = ?').run(
       childOrder,
-      typeof entry.order_key === 'string' ? entry.order_key : membership.order_key,
+      orderKeyArg(entry.order_key) ?? membership.order_key,
       nextSeq(db), id, viewer.id,
     );
   }
@@ -313,7 +316,7 @@ export function addSection(ctx: Ctx, args: Args, tempId?: string): void {
   db.prepare(`INSERT INTO sections (id, project_id, name, description, section_order, order_key, created_by, created_at, seq)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     id, projectId, name, text(args, 'description', { max: 20_000 }) ?? '',
-    integer(args, 'section_order') ?? end.order, typeof args.order_key === 'string' ? args.order_key : end.key,
+    integer(args, 'section_order') ?? end.order, orderKeyArg(args.order_key) ?? end.key,
     viewer.id, ctx.now, nextSeq(db),
   );
 }
@@ -336,7 +339,8 @@ export function updateSection(ctx: Ctx, args: Args): void {
     const order = integer(args, 'section_order');
     if (order !== undefined) set.section_order = order;
   }
-  if ('order_key' in args && typeof args.order_key === 'string') set.order_key = args.order_key;
+  const sectionOrderKey = orderKeyArg(args.order_key);
+  if (sectionOrderKey !== undefined) set.order_key = sectionOrderKey;
   if ('collapsed' in args) set.collapsed = truthy(args.collapsed) ? 1 : 0;
   const keys = Object.keys(set);
   if (!keys.length) return;
