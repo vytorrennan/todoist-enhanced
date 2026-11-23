@@ -101,6 +101,27 @@ export function sectionShape(row: SectionRow, owner: string, since: string | nul
   };
 }
 
+/** A reminder as the API returns it, by its type. */
+export function reminderApiShape(row: { id: string; type: 'absolute' | 'relative'; minute_offset: number | null; due: string | null; notify_uid: string; item_id: string; project_id: string; is_urgent: number }) {
+  const base = { id: row.id, notify_uid: row.notify_uid, item_id: row.item_id, project_id: row.project_id, is_deleted: false, type: row.type };
+  if (row.type === 'absolute') {
+    const due = JSON.parse(row.due ?? '{}') as Record<string, unknown>;
+    return {
+      ...base,
+      due: { date: due.date, string: due.string ?? String(due.date ?? '').slice(0, 10), lang: due.lang ?? DEFAULT_LANG, is_recurring: bool(due.is_recurring as number), timezone: due.timezone ?? null },
+      is_urgent: bool(row.is_urgent),
+    };
+  }
+  return { ...base, minute_offset: row.minute_offset, is_urgent: bool(row.is_urgent) };
+}
+
+export function locationReminderApiShape(row: { id: string; name: string; loc_lat: string; loc_long: string; loc_trigger: string; radius: number; notify_uid: string; item_id: string; project_id: string }) {
+  return {
+    id: row.id, notify_uid: row.notify_uid, item_id: row.item_id, project_id: row.project_id, is_deleted: false,
+    type: 'location', name: row.name, loc_lat: row.loc_lat, loc_long: row.loc_long, loc_trigger: row.loc_trigger, radius: row.radius,
+  };
+}
+
 export function labelShape(row: Parameters<typeof labelOut>[0]) {
   const base = labelOut(row);
   return {
@@ -150,8 +171,8 @@ export function workspaceApiShape(row: Parameters<typeof workspaceOut>[0]) {
   };
 }
 
-export function collaboratorShape(user: { id: string; email: string; full_name: string; image_id: string | null }) {
-  return { id: user.id, name: user.full_name, email: user.email, full_name: user.full_name, image_id: user.image_id, avatar_big: null };
+export function collaboratorShape(user: { id: string; email: string; full_name: string; image_id: string | null; timezone: string }) {
+  return { id: user.id, name: user.full_name, email: user.email, timezone: user.timezone, full_name: user.full_name, image_id: user.image_id, avatar_big: null };
 }
 
 export function userApiShape(user: UserRow) {

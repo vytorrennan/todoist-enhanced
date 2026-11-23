@@ -27,6 +27,7 @@ export type Handler = (req: Request, res: Response) => Promise<void> | void;
 export interface Response {
   status(code: number): Response;
   json(value: unknown): void;
+  text(value: string, contentType: string): void;
   empty(): void;
   header(name: string, value: string): void;
   raw: ServerResponse;
@@ -53,6 +54,11 @@ export function response(raw: ServerResponse): Response {
     json(value) {
       const body = JSON.stringify(value);
       raw.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body), 'Cache-Control': 'no-store' });
+      raw.end(body);
+    },
+    text(value, contentType) {
+      const body = Buffer.from(value, 'utf8');
+      raw.writeHead(code, { 'Content-Type': `${contentType}; charset=utf-8`, 'Content-Length': body.length, 'Cache-Control': 'no-store' });
       raw.end(body);
     },
     empty() { raw.writeHead(code === 200 ? 204 : code, { 'Cache-Control': 'no-store' }); raw.end(); },

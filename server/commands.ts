@@ -6,6 +6,8 @@ import { addProject, archiveProject, deleteProject, moveProjectToPersonal, moveP
 import { shareProject, removeFromProject, changeRole } from './sharing';
 import { LABEL_COMMANDS } from './labels';
 import { NOTE_COMMANDS } from './notes';
+import { REMINDER_COMMANDS } from './reminders';
+import { recordActivity } from './activity';
 import { WORKSPACE_COMMANDS } from './workspaces';
 import { ACCOUNT_COMMANDS } from './account';
 import { readFor, RESOURCE_TYPES } from './read';
@@ -36,6 +38,7 @@ const HANDLERS: Record<string, Handler> = {
   ...ITEM_COMMANDS,
   ...LABEL_COMMANDS,
   ...NOTE_COMMANDS,
+  ...REMINDER_COMMANDS,
   ...WORKSPACE_COMMANDS,
   ...ACCOUNT_COMMANDS,
   project_add: (ctx, args, temp) => addProject(ctx, args, temp),
@@ -114,7 +117,10 @@ export function runCommands(db: Db, viewer: UserRow, commands: CommandInput[], n
     try {
       if (!handler) throw ApiFailure.badRequest(`The server does not know the command “${String(command.type)}”.`, 'UNKNOWN_COMMAND');
       const args = substitute(command.args ?? {}, ctx.temps) as Args;
-      db.transaction(() => handler(ctx, args, command.temp_id))();
+      db.transaction(() => {
+        handler(ctx, args, command.temp_id);
+        recordActivity(db, viewer, command.type, objectOf(ctx, command.type, args, command.temp_id));
+      })();
       status = 'ok';
     } catch (error) {
       // A refused command must leave no temporary id behind: nothing was made for it.
@@ -134,6 +140,13 @@ export function runCommands(db: Db, viewer: UserRow, commands: CommandInput[], n
   return { sync_status, temp_id_mapping: Object.fromEntries(ctx.temps) };
 }
 
+/** The object a command changed: the one it made, or the one it names. */
+function objectOf(ctx: Ctx, type: string, args: Args, tempId?: string): string | undefined {
+  if (tempId && ctx.temps.has(tempId)) return ctx.temps.get(tempId);
+  const key = type.startsWith('project_move_to') ? 'project_id' : 'id';
+  return typeof args[key] === 'string' ? resolveId(ctx, args[key]) : undefined;
+}
+
 /**
  * One command for a REST call: the same handler a sync command runs, in its own transaction, with no answer kept
  * for a retry (a REST call is not retried by the sync engine). Returns the temporary ids it made, so a caller can
@@ -143,7 +156,10 @@ export function applyDirect(db: Db, viewer: UserRow, type: string, args: Args, t
   const handler = HANDLERS[type];
   if (!handler) throw ApiFailure.badRequest(`The server does not know the command “${type}”.`, 'UNKNOWN_COMMAND');
   const ctx = makeCtx(db, viewer, now);
-  db.transaction(() => handler(ctx, args, tempId))();
+  db.transaction(() => {
+    handler(ctx, args, tempId);
+    recordActivity(db, viewer, type, objectOf(ctx, type, args, tempId));
+  })();
   return ctx.temps;
 }
 

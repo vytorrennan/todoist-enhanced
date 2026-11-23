@@ -117,7 +117,7 @@ export interface ProjectRow {
 
 export function projectOut(row: ProjectRow) {
   const shared = row.shared_count > 1;
-  return {
+  const base = {
     id: row.id,
     name: row.name,
     description: row.description,
@@ -130,7 +130,6 @@ export function projectOut(row: ProjectRow) {
     is_favorite: bool(row.is_favorite),
     inbox_project: bool(row.is_inbox),
     view_style: row.view_style,
-    workspace_id: row.workspace_id,
     access: { visibility: row.access_visibility },
     role: row.role,
     folder_id: row.folder_id,
@@ -140,8 +139,26 @@ export function projectOut(row: ProjectRow) {
     shared,
     can_assign_tasks: row.role !== 'READ_ONLY',
     collapsed: bool(row.collapsed),
+    is_collapsed: bool(row.collapsed),
     is_folder: false,
+    icon: null,
+    updated_at: row.created_at ?? null,
+    default_order: row.child_order,
+    default_order_key: row.order_key,
+    is_frozen: false,
   };
+  // A workspace project names its workspace and carries the workspace's rules; a personal project carries no such key.
+  if (row.workspace_id) {
+    return {
+      ...base,
+      workspace_id: row.workspace_id,
+      collaborator_role_default: 'READ_ONLY',
+      is_invite_only: false,
+      is_link_sharing_enabled: false,
+      status: row.is_archived ? 'archived' : 'active',
+    };
+  }
+  return base;
 }
 
 export const sectionOut = (row: {

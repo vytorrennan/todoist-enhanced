@@ -297,4 +297,55 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX processed_commands_time ON processed_commands (created_at);
   `,
+  // Reminders on tasks: an absolute one at a due, a relative one a number of minutes before the task's due, and a
+  // location one. Delivery is the client's concern; the server keeps what was set, as the API does.
+  `
+  CREATE TABLE reminders (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users (id),
+    item_id      TEXT NOT NULL REFERENCES items (id),
+    type         TEXT NOT NULL CHECK (type IN ('absolute', 'relative')),
+    minute_offset INTEGER,
+    due          TEXT,
+    notify_uid   TEXT NOT NULL,
+    service      TEXT,
+    is_urgent    INTEGER NOT NULL DEFAULT 0,
+    is_deleted   INTEGER NOT NULL DEFAULT 0,
+    seq          INTEGER NOT NULL
+  );
+  CREATE INDEX reminders_item ON reminders (item_id);
+  CREATE INDEX reminders_seq ON reminders (seq);
+  CREATE TABLE location_reminders (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users (id),
+    item_id      TEXT NOT NULL REFERENCES items (id),
+    name         TEXT NOT NULL,
+    loc_lat      TEXT NOT NULL,
+    loc_long     TEXT NOT NULL,
+    loc_trigger  TEXT NOT NULL CHECK (loc_trigger IN ('on_enter', 'on_leave')),
+    radius       INTEGER NOT NULL,
+    notify_uid   TEXT NOT NULL,
+    is_deleted   INTEGER NOT NULL DEFAULT 0,
+    seq          INTEGER NOT NULL
+  );
+  CREATE INDEX location_reminders_item ON location_reminders (item_id);
+  CREATE INDEX location_reminders_seq ON location_reminders (seq);
+  `,
+  // The activity log: what changed, on what, by whom. An event belongs to the project it happened in, or to its
+  // initiator alone when it has no project (labels, filters).
+  `
+  CREATE TABLE activity_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           TEXT NOT NULL REFERENCES users (id),
+    object_type       TEXT NOT NULL,
+    object_id         TEXT NOT NULL,
+    event_type        TEXT NOT NULL,
+    event_date        TEXT NOT NULL,
+    parent_project_id TEXT,
+    parent_item_id    TEXT,
+    extra_data        TEXT
+  );
+  CREATE INDEX activity_events_project ON activity_events (parent_project_id, id);
+  CREATE INDEX activity_events_user ON activity_events (user_id, id);
+  `,
 ];

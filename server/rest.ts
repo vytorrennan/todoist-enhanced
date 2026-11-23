@@ -3,14 +3,19 @@ import { ApiFailure } from './db';
 import type { UserRow } from './auth';
 import type { Request, Response, Router } from './http';
 import { applyDirect } from './commands';
-import { visibleSql } from './access';
+import { requireWorkspace, visibleSql } from './access';
 import { type Args, makeCtx } from './ctx';
 import { filterPage, renameOnItems } from './labels';
 import { loadNote } from './notes';
 import { todayIn } from './dates';
 import { readNaturalDate } from '../src/domain/nlp';
 import { ruleFromString } from '../src/domain/repeatRule';
-import { collaboratorShape, commentShape, folderShape, labelShape, projectShape, sectionShape, taskShape, userApiShape, workspaceApiShape } from './rest-shapes';
+import { collaboratorShape, commentShape, folderShape, labelShape, locationReminderApiShape, projectShape, reminderApiShape, sectionShape, taskShape, userApiShape, workspaceApiShape } from './rest-shapes';
+import { locationReminderList, reminderList, visibleLocationReminder, visibleReminder } from './reminders';
+import { listActivity } from './activity';
+import { importCsv, projectCsv } from './templates';
+import { filterOut } from './serialize';
+import { activityStatsOf, healthOf, productivityOf, progressOf, workspaceInsightsOf } from './insights';
 import { updateUser } from './account';
 import type { ItemRow, NoteRow, ProjectRow } from './serialize';
 
@@ -315,8 +320,8 @@ export function registerRest(router: Router, db: Db): void {
   router.add('GET', '/api/v1/projects/:id/collaborators', 'bearer', (req, res) => {
     const viewer = viewerOf(req);
     projectRow(db, viewer.id, req.params.id);
-    const people = db.prepare(`SELECT u.id, u.email, u.full_name, u.image_id FROM project_members m JOIN users u ON u.id = m.user_id
-      WHERE m.project_id = ? AND m.state = 'active' ORDER BY m.child_order`).all(req.params.id) as Array<{ id: string; email: string; full_name: string; image_id: string | null }>;
+    const people = db.prepare(`SELECT u.id, u.email, u.full_name, u.image_id, u.timezone FROM project_members m JOIN users u ON u.id = m.user_id
+      WHERE m.project_id = ? AND m.state = 'active' ORDER BY m.child_order`).all(req.params.id) as Array<{ id: string; email: string; full_name: string; image_id: string | null; timezone: string }>;
     res.json({ results: people.map(collaboratorShape), next_cursor: null });
   });
 
@@ -458,6 +463,214 @@ export function registerRest(router: Router, db: Db): void {
     res.empty();
   });
 
+  /* Activity ---------------------------------------------------------- */
+
+  router.add('GET', '/api/v1/activities', 'bearer', (req, res) => {
+    const cursor = req.query.get('cursor');
+    const limit = Math.min(Number(req.query.get('limit') ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, MAX_LIMIT);
+    res.json(listActivity(db, viewerOf(req), {
+      object_type: req.query.get('object_type'),
+      object_id: req.query.get('object_id'),
+      event_type: req.query.get('event_type'),
+      parent_project_id: req.query.get('parent_project_id'),
+      parent_item_id: req.query.get('parent_item_id'),
+      initiator_id: req.query.get('initiator_id'),
+    }, cursor ? Number(cursor) : Number.MAX_SAFE_INTEGER, limit));
+  });
+
+  /* Reminders --------------------------------------------------------- */
+
+  const reminderArgs = (body: Record<string, unknown>): Args => {
+    const args: Args = {};
+    if ('task_id' in body) args.item_id = body.task_id;
+    if ('reminder_type' in body) args.type = body.reminder_type;
+    for (const key of ['minute_offset', 'due', 'notify_uid', 'service', 'is_urgent']) if (key in body) args[key] = body[key];
+    return args;
+  };
+  const locationArgs = (body: Record<string, unknown>): Args => {
+    const args: Args = {};
+    if ('task_id' in body) args.item_id = body.task_id;
+    for (const key of ['name', 'loc_lat', 'loc_long', 'loc_trigger', 'radius', 'notify_uid']) if (key in body) args[key] = body[key];
+    return args;
+  };
+  const reminderOutFor = (viewer: UserRow, id: string) => {
+    const row = visibleReminder(db, viewer.id, id);
+    if (!row) throw ApiFailure.notFound('That reminder does not exist.', 'REMINDER_NOT_FOUND');
+    return reminderApiShape(row);
+  };
+  const locationOutFor = (viewer: UserRow, id: string) => {
+    const row = visibleLocationReminder(db, viewer.id, id);
+    if (!row) throw ApiFailure.notFound('That location reminder does not exist.', 'REMINDER_NOT_FOUND');
+    return locationReminderApiShape(row);
+  };
+
+  router.add('GET', '/api/v1/reminders', 'bearer', (req, res) => {
+    res.json({ results: reminderList(db, viewerOf(req).id).map(reminderApiShape), next_cursor: null });
+  });
+  router.add('POST', '/api/v1/reminders', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    const temp = `rest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const temps = applyDirect(db, viewer, 'reminder_add', reminderArgs(bodyOf(req)), temp);
+    res.json(reminderOutFor(viewer, temps.get(temp) ?? ''));
+  });
+  router.add('GET', '/api/v1/reminders/:id', 'bearer', (req, res) => {
+    res.json(reminderOutFor(viewerOf(req), req.params.id));
+  });
+  router.add('POST', '/api/v1/reminders/:id', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    applyDirect(db, viewer, 'reminder_update', { ...reminderArgs(bodyOf(req)), id: req.params.id });
+    res.json(reminderOutFor(viewer, req.params.id));
+  });
+  router.add('DELETE', '/api/v1/reminders/:id', 'bearer', (req, res) => {
+    applyDirect(db, viewerOf(req), 'reminder_delete', { id: req.params.id });
+    res.empty();
+  });
+
+  router.add('GET', '/api/v1/location_reminders', 'bearer', (req, res) => {
+    res.json({ results: locationReminderList(db, viewerOf(req).id).map(locationReminderApiShape), next_cursor: null });
+  });
+  router.add('POST', '/api/v1/location_reminders', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    const temp = `rest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const temps = applyDirect(db, viewer, 'location_reminder_add', locationArgs(bodyOf(req)), temp);
+    res.json(locationOutFor(viewer, temps.get(temp) ?? ''));
+  });
+  router.add('GET', '/api/v1/location_reminders/:id', 'bearer', (req, res) => {
+    res.json(locationOutFor(viewerOf(req), req.params.id));
+  });
+  router.add('POST', '/api/v1/location_reminders/:id', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    applyDirect(db, viewer, 'location_reminder_update', { ...locationArgs(bodyOf(req)), id: req.params.id });
+    res.json(locationOutFor(viewer, req.params.id));
+  });
+  router.add('DELETE', '/api/v1/location_reminders/:id', 'bearer', (req, res) => {
+    applyDirect(db, viewerOf(req), 'location_reminder_delete', { id: req.params.id });
+    res.empty();
+  });
+
+  /* Insights and productivity ----------------------------------------- */
+
+  router.add('GET', '/api/v1/tasks/completed/stats', 'bearer', (req, res) => {
+    res.json(productivityOf(db, viewerOf(req)));
+  });
+
+  router.add('GET', '/api/v1/projects/:id/insights/progress', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    projectRow(db, viewer.id, req.params.id);
+    res.json(progressOf(db, viewer, req.params.id));
+  });
+
+  router.add('GET', '/api/v1/projects/:id/insights/health', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    projectRow(db, viewer.id, req.params.id);
+    res.json(healthOf(db, viewer, req.params.id));
+  });
+
+  router.add('POST', '/api/v1/projects/:id/insights/health/analyze', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    projectRow(db, viewer.id, req.params.id);
+    res.json(healthOf(db, viewer, req.params.id));
+  });
+
+  router.add('GET', '/api/v1/projects/:id/insights/activity_stats', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    projectRow(db, viewer.id, req.params.id);
+    res.json(activityStatsOf(db, viewer, req.params.id));
+  });
+
+  router.add('GET', '/api/v1/workspaces/:id/insights', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    requireWorkspace(db, req.params.id, viewer.id);
+    res.json(workspaceInsightsOf(db, viewer, req.params.id));
+  });
+
+  /* Templates ---------------------------------------------------------- */
+
+  router.add('GET', '/api/v1/templates/file', 'bearer', (req, res) => {
+    const project = req.query.get('project_id') ?? '';
+    res.text(projectCsv(db, viewerOf(req), project), 'text/csv');
+  });
+
+  router.add('GET', '/api/v1/templates/url', 'bearer', (req, res) => {
+    const project = req.query.get('project_id') ?? '';
+    projectRow(db, viewerOf(req).id, project);
+    res.json({ file_url: `/api/v1/templates/file?project_id=${encodeURIComponent(project)}` });
+  });
+
+  // Templates from Todoist's own library are not on this server; a template made here is imported as CSV.
+  router.add('POST', '/api/v1/projects/:id/import_template', 'bearer', () => {
+    throw ApiFailure.notFound('That template is not on this server. Import a CSV file instead.', 'TEMPLATE_NOT_FOUND');
+  });
+
+  /* Filters ----------------------------------------------------------- */
+
+  const filterArgs = (body: Record<string, unknown>): Args => {
+    const args: Args = {};
+    for (const key of ['name', 'query', 'description', 'color', 'is_favorite', 'item_order', 'order_key']) if (key in body) args[key] = body[key];
+    return args;
+  };
+  const filterOutFor = (viewer: UserRow, id: string) => {
+    const row = db.prepare('SELECT * FROM filters WHERE id = ? AND user_id = ? AND is_deleted = 0').get(id, viewer.id) as Parameters<typeof filterOut>[0] | undefined;
+    if (!row) throw ApiFailure.notFound('That filter does not exist.', 'FILTER_NOT_FOUND');
+    return filterOut(row);
+  };
+
+  router.add('GET', '/api/v1/filters', 'bearer', (req, res) => {
+    const rows = db.prepare('SELECT * FROM filters WHERE user_id = ? AND is_deleted = 0 ORDER BY item_order').all(viewerOf(req).id);
+    res.json({ results: (rows as Parameters<typeof filterOut>[0][]).map(filterOut), next_cursor: null });
+  });
+  router.add('POST', '/api/v1/filters', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    const temp = `rest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const temps = applyDirect(db, viewer, 'filter_add', filterArgs(bodyOf(req)), temp);
+    res.json(filterOutFor(viewer, temps.get(temp) ?? ''));
+  });
+  router.add('GET', '/api/v1/filters/:id', 'bearer', (req, res) => {
+    res.json(filterOutFor(viewerOf(req), req.params.id));
+  });
+  router.add('POST', '/api/v1/filters/:id', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    applyDirect(db, viewer, 'filter_update', { ...filterArgs(bodyOf(req)), id: req.params.id });
+    res.json(filterOutFor(viewer, req.params.id));
+  });
+  router.add('DELETE', '/api/v1/filters/:id', 'bearer', (req, res) => {
+    applyDirect(db, viewerOf(req), 'filter_delete', { id: req.params.id });
+    res.empty();
+  });
+
+  /* Joining ----------------------------------------------------------- */
+
+  // A project in a workspace can be joined by someone it was shared with: their pending invitation is accepted.
+  router.add('POST', '/api/v1/projects/:id/join', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    const project = db.prepare('SELECT workspace_id FROM projects WHERE id = ? AND is_deleted = 0').get(req.params.id) as { workspace_id: string | null } | undefined;
+    const invite = db.prepare(`SELECT id, secret FROM invitations WHERE kind = 'project' AND project_id = @project AND state = 'pending'
+      AND (user_id = @viewer OR (user_id IS NULL AND lower(email) = lower(@email))) ORDER BY created_at DESC LIMIT 1`)
+      .get({ project: req.params.id, viewer: viewer.id, email: viewer.email }) as { id: string; secret: string } | undefined;
+    if (!project || !invite) throw ApiFailure.forbidden('That project is not open to you to join.', 'NOT_JOINABLE');
+    if (!project.workspace_id) throw ApiFailure.badRequest('Only a project in a workspace is joined this way.', 'NOT_IN_WORKSPACE');
+    applyDirect(db, viewer, 'accept_invitation', { invitation_id: invite.id, invitation_secret: invite.secret });
+    const row = projectRow(db, viewer.id, req.params.id);
+    const tasks = db.prepare('SELECT * FROM items WHERE project_id = ? AND is_deleted = 0 AND checked = 0 ORDER BY child_order').all(row.id) as ItemRow[];
+    const sections = db.prepare('SELECT s.*, p.created_at AS project_created, p.created_by AS owner FROM sections s JOIN projects p ON p.id = s.project_id WHERE s.project_id = ? AND s.is_deleted = 0 ORDER BY s.section_order')
+      .all(row.id) as SectionWithProject[];
+    const people = db.prepare(`SELECT u.id, u.email, u.full_name, u.image_id, u.timezone FROM project_members m JOIN users u ON u.id = m.user_id
+      WHERE m.project_id = ? AND m.state = 'active'`).all(row.id) as Array<{ id: string; email: string; full_name: string; image_id: string | null; timezone: string }>;
+    const subprojects = db.prepare(`${PROJECT_SELECT} WHERE p.is_deleted = 0 AND p.parent_id = @project`)
+      .all({ viewer: viewer.id, project: row.id }) as ProjectRow[];
+    const folder = row.folder_id ? db.prepare('SELECT * FROM folders WHERE id = ? AND is_deleted = 0').get(row.folder_id) as Parameters<typeof folderShape>[0] | undefined : undefined;
+    res.json({
+      project: projectShape(row),
+      tasks: tasks.map((task) => taskShape(task, 0)),
+      sections: sections.map((section) => sectionShape(section, section.owner, section.project_created)),
+      comments: [],
+      collaborators: people.map(collaboratorShape),
+      collaborator_states: [],
+      folder: folder ? folderShape(folder) : null,
+      subprojects: subprojects.map(projectShape),
+    });
+  });
+
   /* Folders and workspaces -------------------------------------------- */
 
   router.add('GET', '/api/v1/folders', 'bearer', (req, res) => {
@@ -544,3 +757,18 @@ function folderOutFor(db: Db, id: string) {
   return folderShape(row);
 }
 
+/** The objects a CSV import made, in the shape the API returns them. */
+export function importAnswer(db: Db, viewer: UserRow, projectId: string | null, text: string) {
+  const made = importCsv(db, viewer, projectId, text);
+  return {
+    projects: made.project ? [projectShape(projectRow(db, viewer.id, made.project))] : [],
+    sections: made.sections.map((id) => sectionOut(viewer, db, id)),
+    tasks: made.tasks.map((id) => taskOutFor(db, viewer, id)),
+    comments: made.comments.map((id) => commentOutFor(viewer, db, id)),
+  };
+}
+
+function taskOutFor(db: Db, viewer: UserRow, id: string) {
+  const row = itemRow(db, viewer.id, id);
+  return taskShape(row, noteCounts(db, [row.id]).get(row.id) ?? 0);
+}

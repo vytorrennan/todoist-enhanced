@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import Busboy from 'busboy';
-import { statSync, createReadStream } from 'node:fs';
+import { statSync, createReadStream, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ApiFailure, type Db, openDatabase } from './db';
 import {
   checkLogin, clearLoginAttempts, createSession, hashPassword, loginWait, normalizeEmail, recordLoginAttempt,
@@ -12,10 +13,10 @@ import { syncRequest } from './commands';
 import { projectPeople } from './projects';
 import { workspaceUsers, setWorkspaceRole } from './workspaces';
 import { completedTasks } from './history';
-import { registerRest } from './rest';
+import { importAnswer, registerRest } from './rest';
 
 import { setReaction } from './notes';
-import { fileFor, removeUpload, storeUpload, MAX_UPLOAD_BYTES, type StoredFile } from './files';
+import { fileFor, filesDir, removeUpload, storeUpload, MAX_UPLOAD_BYTES, type StoredFile } from './files';
 import { updateUser } from './account';
 import { makeCtx, type Ctx } from './ctx';
 import { currentSeq } from './db';
@@ -219,6 +220,18 @@ export function createApp(options: AppOptions): App {
     }
     const file = await receiveUpload(req.raw, req.user as UserRow, () => userForToken(db, req.bearer) !== null);
     res.status(201).json(file);
+  });
+
+  // A CSV file imported into a project (the API's import, as the MCP calls it).
+  router.add('POST', '/api/v1/projects/:id/import', 'bearer', async (req, res) => {
+    const owner = req.user as UserRow;
+    const file = await receiveUpload(req.raw, owner, () => userForToken(db, req.bearer) !== null);
+    try {
+      const text = readFileSync(join(filesDir(options.dataDir), file.id), 'utf8');
+      res.json(importAnswer(db, owner, req.params.id, text));
+    } finally {
+      removeUpload(db, options.dataDir, file.id);
+    }
   });
 
   router.add('GET', '/api/v1/files/:id', 'cookie-or-bearer', (req, res) => {
