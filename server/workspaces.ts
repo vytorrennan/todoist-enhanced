@@ -100,7 +100,10 @@ export function addFolder(ctx: Ctx, args: Args, tempId?: string): void {
 function ownFolder(ctx: Ctx, id: string, workspaceArg?: unknown) {
   const folder = ctx.db.prepare('SELECT * FROM folders WHERE id = ?').get(id) as
     | { id: string; workspace_id: string; name: string; child_order: number; is_deleted: number } | undefined;
-  if (!folder || folder.is_deleted) throw ApiFailure.notFound('That folder does not exist.', 'FOLDER_NOT_FOUND');
+  // A folder in a workspace the person is not in answers as one that does not exist: its workspace is not revealed.
+  if (!folder || folder.is_deleted || !workspaceRole(ctx.db, folder.workspace_id, ctx.viewer.id)) {
+    throw ApiFailure.notFound('That folder does not exist.', 'FOLDER_NOT_FOUND');
+  }
   if (workspaceArg !== undefined && resolveId(ctx, workspaceArg) !== folder.workspace_id) {
     throw ApiFailure.badRequest('That folder is not in this workspace.', 'FOLDER_NOT_IN_WORKSPACE');
   }

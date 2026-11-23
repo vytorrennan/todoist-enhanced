@@ -719,6 +719,38 @@ describe('the ninth review', () => {
   });
 });
 
+/** The tenth review: each test fails without the fix it names. */
+describe('the tenth review', () => {
+  it('a task moved with a parent that is not an id is refused, and stays under its parent', async () => {
+    const owner = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const made = await run(owner, [
+      command('item_add', { content: 'Parent', project_id: inbox }, { temp_id: tempId(270) }),
+      command('item_add', { content: 'Child', project_id: inbox, parent_id: tempId(270) }, { temp_id: tempId(271) }),
+    ]);
+    const child = made.real(271);
+    const parent = made.real(270);
+    const moved = await run(owner, [command('item_move', { id: child, parent_id: 123 })]);
+    expect(moved.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const items = (await as(owner).sync({ types: ['items'] })).body.items as Array<{ id: string; parent_id: string | null }>;
+    expect(items.find((item) => item.id === child)?.parent_id).toBe(parent);
+  });
+
+  it('a folder in a workspace the person is not in is reported as missing, whatever workspace is named', async () => {
+    const owner = await person(base);
+    const stranger = await person(base);
+    const made = await run(owner, [
+      command('workspace_add', { name: 'Closed hall' }, { temp_id: tempId(280) }),
+      command('folder_add', { name: 'Shut', workspace_id: tempId(280) }, { temp_id: tempId(281) }),
+    ]);
+    const folder = made.real(281);
+    const elsewhere = await run(stranger, [command('folder_update', { id: folder, workspace_id: 'other', name: 'x' })]);
+    const missing = await run(stranger, [command('folder_update', { id: 'no-such-folder', workspace_id: 'other', name: 'x' })]);
+    expect(elsewhere.statuses[0]).toMatchObject({ error_tag: 'FOLDER_NOT_FOUND' });
+    expect(missing.statuses[0]).toMatchObject({ error_tag: 'FOLDER_NOT_FOUND' });
+  });
+});
+
 describe('a CSV import', () => {
   it('keeps a subtask in its parent\'s section', async () => {
     const who = await person(base);

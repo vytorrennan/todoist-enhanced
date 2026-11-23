@@ -310,7 +310,9 @@ export function moveItem(ctx: Ctx, args: Args): void {
   const row = loadItem(ctx, resolveId(ctx, idArg(args, 'id', true)));
   requireProject(db, row.project_id, ctx.viewer.id, 'write');
   const parentGiven = 'parent_id' in args;
-  const parentId = parentGiven ? resolveId(ctx, args.parent_id) || null : null;
+  // A parent given as anything but an id is refused, not taken as "no parent".
+  const parentRaw = parentGiven ? idArg(args, 'parent_id') : undefined;
+  const parentId = parentRaw ? resolveId(ctx, parentRaw) : null;
   const parent = parentId
     ? db.prepare(`SELECT * FROM items WHERE id = @id AND is_deleted = 0 AND ${visibleSql('project_id')}`).get({ id: parentId, viewer: ctx.viewer.id }) as ItemRow | undefined
     : undefined;
