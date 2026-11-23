@@ -186,7 +186,8 @@ export function updateProject(ctx: Ctx, args: Args): void {
   }
   if ('folder_id' in args) {
     requireProject(db, id, viewer.id, 'admin');
-    const folder = args.folder_id ? resolveId(ctx, args.folder_id) : null;
+    const folderId = idArg(args, 'folder_id');
+    const folder = folderId ? resolveId(ctx, folderId) : null;
     // A folder takes a project out of its parent, which changes the shared tree: only the owner of a subproject does that.
     if (folder && (db.prepare('SELECT parent_id FROM projects WHERE id = ?').get(id) as { parent_id: string | null }).parent_id) {
       requireProject(db, id, viewer.id, 'owner');
@@ -228,7 +229,8 @@ function moveProject(ctx: Ctx, id: string, parentArg: unknown): void {
   const { db, viewer } = ctx;
   // Where a project sits is shared by everyone who sees it, so only its owner moves it, and the whole branch must be the owner's.
   requireProject(db, id, viewer.id, 'owner');
-  const parentId = parentArg ? resolveId(ctx, parentArg) : null;
+  const parentRaw = idArg({ parent_id: parentArg }, 'parent_id');
+  const parentId = parentRaw ? resolveId(ctx, parentRaw) : null;
   if (parentId) {
     const self = db.prepare('SELECT is_inbox FROM projects WHERE id = ?').get(id) as { is_inbox: number };
     if (self.is_inbox) throw ApiFailure.badRequest('The Inbox stays where it is.', 'INBOX');

@@ -9,6 +9,7 @@ vi.mock('@/api/commands', async (importOriginal) => ({
 
 import { sendCommands, type Command, type CommandResult } from '@/api/commands';
 import { emptySnapshot, type Project } from '@/domain/types';
+import { byChildOrder } from '@/domain/orderKey';
 import { useStore } from './store';
 
 const sent = vi.mocked(sendCommands);
@@ -56,5 +57,8 @@ describe('adding a project below a sibling that has no key yet', () => {
     expect(key.P1 < added.order_key && added.order_key < key.P2).toBe(true);
     expect(added.child_order).toBe(2);
     expect(reorder.projects.map((entry) => entry.child_order)).toEqual([1, 3]);
+    /* Before the sync answers, the list already reads in its new order. */
+    const shown = Object.values(useStore.getState().snapshot.projects).sort(byChildOrder).map((project) => project.name);
+    expect(shown).toEqual(['P1', 'New', 'P2']);
   });
 });

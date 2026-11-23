@@ -358,6 +358,7 @@ export const createStructureSlice: Slice<StructureSlice> = (_set, get) => ({
        real ids, so no command has to resolve a temp id to do its work. */
     let childOrder = Object.keys(snapshot.projects).length;
     let orderKey: string | null = null;
+    let renumbered: Array<{ id: string; child_order: number; order_key: string }> = [];
     if (sibling) {
       const siblings = Object.values(snapshot.projects)
         .filter((project) =>
@@ -389,11 +390,11 @@ export const createStructureSlice: Slice<StructureSlice> = (_set, get) => ({
         const keys = keysInOrder(siblings.length + 1);
         orderKey = keys[insertAt];
         args.child_order = childOrder;
-        const reordered = siblings.map((project, index) => {
+        renumbered = siblings.map((project, index) => {
           const position = index < insertAt ? index : index + 1;
           return { id: project.id, child_order: position + 1, order_key: keys[position] };
         });
-        commands.push(command('project_reorder', { projects: reordered }));
+        commands.push(command('project_reorder', { projects: renumbered }));
       }
     }
     if (orderKey) args.order_key = orderKey;
@@ -405,6 +406,10 @@ export const createStructureSlice: Slice<StructureSlice> = (_set, get) => ({
       ...current,
       projects: {
         ...current.projects,
+        // The siblings renumbered above are shown where the list now puts them, until the sync says otherwise.
+        ...Object.fromEntries(renumbered
+          .filter((entry) => current.projects[entry.id])
+          .map((entry) => [entry.id, { ...current.projects[entry.id], child_order: entry.child_order, order_key: entry.order_key }])),
         [tempId]: {
           id: tempId, name, color,
           parent_id: extra.parentId ?? sibling?.parent_id ?? null,

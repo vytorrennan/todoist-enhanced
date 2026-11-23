@@ -695,6 +695,30 @@ describe('the eighth review', () => {
   });
 });
 
+/** The ninth review: each test fails without the fix it names. */
+describe('the ninth review', () => {
+  it('a parent project or folder that is not an id is refused, and the project is left as it was', async () => {
+    const owner = await person(base);
+    const made = await run(owner, [
+      command('project_add', { name: 'Lone' }, { temp_id: tempId(260) }),
+      command('project_add', { name: 'Host' }, { temp_id: tempId(261) }),
+    ]);
+    const lone = made.real(260);
+    const movedBad = await run(owner, [command('project_move', { id: lone, parent_id: 123 })]);
+    expect(movedBad.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const filedBad = await run(owner, [command('project_update', { id: lone, folder_id: true })]);
+    expect(filedBad.statuses[0]).toMatchObject({ error_tag: 'INVALID_ARGUMENT' });
+    const projects = (await as(owner).sync({ types: ['projects'] })).body.projects as Array<{ id: string; parent_id: string | null }>;
+    expect(projects.find((project) => project.id === lone)?.parent_id ?? null).toBeNull();
+  });
+
+  it('a command named after an object property is refused as an unknown command', async () => {
+    const owner = await person(base);
+    const named = await run(owner, [command('toString', {})]);
+    expect(named.statuses[0]).toMatchObject({ error_tag: 'UNKNOWN_COMMAND' });
+  });
+});
+
 describe('a CSV import', () => {
   it('keeps a subtask in its parent\'s section', async () => {
     const who = await person(base);

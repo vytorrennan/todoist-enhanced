@@ -111,7 +111,8 @@ export function runCommands(db: Db, viewer: UserRow, commands: CommandInput[], n
       if (command.temp_id) unfinished.add(command.temp_id);
       continue;
     }
-    const handler = typeof command.type === 'string' ? HANDLERS[command.type] : undefined;
+    // Only the command table's own names count: a name such as "toString" is not a command.
+    const handler = typeof command.type === 'string' && Object.prototype.hasOwnProperty.call(HANDLERS, command.type) ? HANDLERS[command.type] : undefined;
     const before = new Map(ctx.temps);
     let status: CommandStatus;
     try {
@@ -154,7 +155,7 @@ function objectOf(ctx: Ctx, type: string, args: Args, tempId?: string): string |
  * read the object it created.
  */
 export function applyDirect(db: Db, viewer: UserRow, type: string, args: Args, tempId?: string, now = new Date()): Map<string, string> {
-  const handler = HANDLERS[type];
+  const handler = Object.prototype.hasOwnProperty.call(HANDLERS, type) ? HANDLERS[type] : undefined;
   if (!handler) throw ApiFailure.badRequest(`The server does not know the command “${type}”.`, 'UNKNOWN_COMMAND');
   const ctx = makeCtx(db, viewer, now);
   db.transaction(() => {
