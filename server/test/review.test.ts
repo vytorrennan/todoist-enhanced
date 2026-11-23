@@ -751,6 +751,17 @@ describe('the tenth review', () => {
   });
 });
 
+/** The eleventh review: each test fails without the fix it names. */
+describe('the eleventh review', () => {
+  it('a personal Inbox cannot be shared', async () => {
+    const owner = await person(base);
+    const other = await person(base);
+    const inbox = (await as(owner).get('/api/v1/user')).body.inbox_project_id as string;
+    const shared = await run(owner, [command('share_project', { project_id: inbox, email: other.email, role: 'READ_WRITE' })]);
+    expect(shared.statuses[0]).toMatchObject({ error_tag: 'INBOX' });
+  });
+});
+
 describe('a CSV import', () => {
   it('keeps a subtask in its parent\'s section', async () => {
     const who = await person(base);

@@ -120,6 +120,9 @@ const shareFields = (invitation: { id: string; secret: string; kind: string; pro
 export function shareProject(ctx: Ctx, projectId: string, email: string, role: string | undefined): void {
   const { db, viewer } = ctx;
   requireProject(db, projectId, viewer.id, 'admin');
+  // The Inbox is one person's own list: shared, a second Inbox would appear to the recipient.
+  const self = db.prepare('SELECT is_inbox FROM projects WHERE id = ?').get(projectId) as { is_inbox: number };
+  if (self.is_inbox) throw ApiFailure.badRequest('The Inbox cannot be shared.', 'INBOX');
   if (sameEmail(email, viewer.email)) throw ApiFailure.badRequest('You are already in this project.', 'ALREADY_MEMBER');
   const chosen = role ?? 'READ_WRITE';
   if (!isProjectRole(chosen) || chosen === 'CREATOR') throw ApiFailure.badRequest('That role cannot be given.', 'INVALID_ROLE');
