@@ -20,10 +20,10 @@ _This is an independent fork. It is not created by, affiliated with, or supporte
 ## Contents
 
 - [Screenshots](#screenshots)
-- [Features](#features)
-- [The basics you expect from a task app](#the-basics-you-expect-from-a-task-app)
 - [Quick start](#quick-start)
 - [MCP integration and configuration](#mcp-integration-and-configuration)
+- [Features](#features)
+- [The basics you expect from a task app](#the-basics-you-expect-from-a-task-app)
 - [Authentication and security](#authentication-and-security)
 - [Architecture and data storage](#architecture-and-data-storage)
 - [Backups and recovery](#backups-and-recovery)
@@ -53,58 +53,6 @@ _This is an independent fork. It is not created by, affiliated with, or supporte
 
 *Things to settle — contradictions listed with the options that match each intent.*
 
-
-## Features
-
-Everything here is stored in ordinary rows on your server: an estimate is a label (or a duration in the task's own field), "anytime this week" is a label, and the rest is projects, sections, priorities and dates. Your data is in a SQLite file you can open, copy and back up.
-
-- **Today / Anytime this week / Someday:** A planner asks which day a task belongs to, and most work has no good answer — it belongs to *this week*, and picking Tuesday for it is a guess you spend the week correcting. So there are three commitments instead of one. Today is what you have actually dated. Anytime this week is what you have committed to without pinning to an afternoon. Someday is what you are not committing to yet — out of the week but not out of the app, read back to you at the weekly review so it never quietly becomes a graveyard. On the page itself, tasks that have sat there for months (three by default, 1 to 12 in Settings) are gathered at the top in a group called Gathering dust, each with three actions: This week, Keep or Delete. A task you keep stays in Someday on purpose and comes back only after another full delay; that is remembered on the device, and nothing else is recorded for it.
-
-- **Eisenhower matrix:** the same tasks, sorted into four quadrants instead of a list — urgent and important, important but not urgent, urgent but not important, neither. Urgency comes from the due date (you choose how close counts as urgent), importance from priority (P1 only, or P1 and P2). Switch to a flat list, filter by workspace, and decide whether Someday tasks count.
-
-- **Daily and weekly review:** a few minutes, one question at a time, with an end. The daily one walks what is late, your mail, the Inbox, what you committed to this week without naming a day, what has no estimate, and what today weighs against the hours you have. Each step is answered from inside it, so you never leave the review to act on what it just told you. The weekly one closes the week and opens the next: what you finished, the week in numbers, what is late, which projects have gone quiet.
-
-- **Task durations:** write down how long a task will take — `25`, `1h15`, `90 min`. Every page then carries a line saying how many tasks are on it, how much time they add up to, and what share of the capacity you set for that day or week. That last figure is a load pill: green, amber, over. A day filled to 140% says so before you start it, not at six in the evening. A parent whose open subtasks all have a duration takes their sum, written to the task itself; with one missing it keeps its own, or shows the partial sum as computed. Anything still unestimated is counted separately and listed in one place so you can fill a page of them in one pass. A duration set in the task's own field counts too, with the source chosen in Settings taking priority when both are present. Tags are the default; editing a tag estimate keeps the calendar duration. Every native estimate write is checked against server data; a dropped or refused duration switches back to tags and recovers the estimate. An unavailable verification stays queued for the next sync. Durations in days are ignored; estimates of 24 hours or more keep their exact minute value. Settings offers a conversion preview for open tasks, including subtasks, with skipped conflicts and a result per batch. Converting timed durations to tags preserves calendar blocks; untimed durations are cleared. Account labels and completed tasks are never deleted by conversion.
-
-- **I have time:** a pill next to the load figure on My week, projects, tags, the Inbox and Someday. Pick how long you have, 5 minutes to an hour or any duration you type, and a panel on the right lists the tasks that fit, by when they are due: overdue, today, tomorrow, this week, no date. It looks in the page you are on or everywhere, never guesses at a task with no estimate (it counts them, and offers to estimate them), and leaves the page behind it exactly as it was. Nothing is changed and nothing is remembered after a reload.
-
-- **Checklists:** lines like `- [ ] item` in a task's description show as small checkboxes in the task panel, with "3 of 7" beside the description. Ticking one changes only that line, so the same text still reads as plain text anywhere else. Editing is by rows rather than syntax: Enter adds the next item, Enter on an empty one leaves the list, Backspace at its start makes it plain text, and `[]` and a space starts a list, in the panel and in the new task window. Task rows never show the checklist lines.
-
-- **Folders:** group projects inside a folder the way most task apps do — a collapsible row you can expand or collapse on its own, in your personal projects as much as in any team workspace. Drop a project onto a folder to file it inside.
-
-- **Quick tasks on top of the list:** anything short enough to *do* rather than plan, gathered into its own bucket at the top of the week — under five minutes, or tagged `quick`. It sits at the top because that is when it is useful: the five minutes before a meeting are the five minutes those tasks are for. A task tagged quick but estimated at forty minutes is not quick, so it stays out and is reported as a contradiction instead. The same group leads a project, a tag, the Inbox and Someday, with the tasks that are late, due today or without a date (a quick task due next month stays where it is); each row says which section or project it comes from, and nothing is listed twice. On a board it is a blue first column, to look at rather than to drop tasks on. One switch in Settings turns it off everywhere.
-
-- **Visible subtasks:** drawn under their parent in the list, indented, rather than hidden behind a count you have to open the task to see. The parent shows how many are done and its estimate is the sum of theirs. They can be made and unmade by dragging — pull a row a little to the right over another and it goes inside it; pull a subtask out to the left and it is a task of its own again. The task composer works the same way: add subtasks inline while you write the parent, each one its own editable row, and they are all created together when you save.
-
-- **Project icons:** pick an icon for a project from a searchable catalog, next to the existing colour picker. It is saved with the project, so it follows the project between devices, not just this browser.
-
-- **Dashboard:** a board that changes with the period you pick. A day shows the hours you finished things in, a week adds its shape and a comparison with the one before, a quarter and a year read month by month. Edit layout lets you put the cards in the order you want, with the mouse or the keyboard, and Reset to default puts them back. The focus score weights what you finished by its priority — the only question worth asking about a finished week: whether the effort went where it mattered, or into whatever was easiest to close.
-
-- **Better logbook:** what you actually finished, grouped by day, and filtered by several projects and priorities at once rather than one at a time. It shares the period control with the dashboard, so the two always describe the same window.
-
-- **Custom themes:** ten accent colours plus one you pick yourself, every one drawn in light *and* dark and checked for contrast rather than chosen by eye. Dark mode is not a second-class version of the theme — it is the theme. Light, dark, or whatever the device is set to.
-
-- **Things to settle:** the contradictions no app should resolve on its own — a task both dated and labelled for the week, two estimates on one task, a quick task estimated at forty minutes. Each is listed with the options that match each possible intent, and nothing changes until you choose one.
-
-- **The keyboard, and a phone:** arrows walk the list, Enter opens a task, `E` finishes it, `T` schedules it, `G` then a letter goes somewhere, and typing anything else starts a search — the usual keys for task apps, with `?` for the list. On a phone, swipe a task aside for its actions and hold it for the rest, the two gestures a phone has in place of a pointer hovering over a row.
-
-## The basics you expect from a task app
-
-- **Drag and drop:** a task onto a day, a project, a tag, a section, a board column, or another task. In the sidebar, projects reorder by dragging and nest by dragging one a little to the right. Dropped straight onto a row, a task takes that row's place, and the order is saved with the task. Every destination has one fixed meaning, every drop says what it did, and every drop can be undone.
-
-- **List, board and calendar views:** with sorting and filtering behind one Display control, remembered separately for each page. Calendar offers 3 days, week and month, an undated-tasks sidebar, drag and drop, and resizing in 15-minute steps. Tag estimates stay in tags. Recurring forecasts are read-only. Completed history is shown on completion day; saved filters show the open tasks that match their query.
-
-- **Natural language in the task composer:** `Call Marc tomorrow at 9h p1 #Work @quick (25)` — the date, project, priority, tag and estimate are marked inside the field as you type, and fill the fields underneath, so you see what it understood before you commit. Click a mark, or press Backspace against it, and that reading turns back into ordinary text. Recurring dates use the usual grammar — `every monday`, `every 3 days`, `every!` — and the server works out each next date.
-
-- **Projects, sections, tags and favourites:** a page for each, nested and ordered by dragging, with the Inbox and Upcoming where you expect them. A section has a menu: edit, move to another project, duplicate with its tasks, copy its link, archive or delete.
-
-- **Search:** `⌘K`, or just start typing. It covers tasks, projects, sections, tags and every view in the app, which makes it the fastest way to anywhere.
-
-- **Multi-select:** `⌘`-click, with one bar at the foot of the window to give the lot a date, a project, a tag or a priority.
-
-- **Markdown in descriptions:** rendered in the list and in the task panel.
-
-- **And the rest:** undo (`⌘Z`) for a move, a completion, a deletion or a drop, with a deleted task coming back with its subtasks. Offline, with changes queued and sent when you reconnect, and installable as an app. English and French, and settings for the things people disagree about.
 
 ## Quick start
 
@@ -174,6 +122,58 @@ The suite in `mcp-e2e/` runs the official package over its stdio transport, the 
 - **Accounts and errors:** sign-in is required, a signed-out token stops working, one person's data never appears in another's lists, and missing fields, unknown tools, partial batches and double completions are reported as failures.
 
 Not covered: comments, reminders, folders, workspaces, and most label and section writes. See [Known limitations](#known-limitations).
+
+## Features
+
+Everything here is stored in ordinary rows on your server: an estimate is a label (or a duration in the task's own field), "anytime this week" is a label, and the rest is projects, sections, priorities and dates. Your data is in a SQLite file you can open, copy and back up.
+
+- **Today / Anytime this week / Someday:** A planner asks which day a task belongs to, and most work has no good answer — it belongs to *this week*, and picking Tuesday for it is a guess you spend the week correcting. So there are three commitments instead of one. Today is what you have actually dated. Anytime this week is what you have committed to without pinning to an afternoon. Someday is what you are not committing to yet — out of the week but not out of the app, read back to you at the weekly review so it never quietly becomes a graveyard. On the page itself, tasks that have sat there for months (three by default, 1 to 12 in Settings) are gathered at the top in a group called Gathering dust, each with three actions: This week, Keep or Delete. A task you keep stays in Someday on purpose and comes back only after another full delay; that is remembered on the device, and nothing else is recorded for it.
+
+- **Eisenhower matrix:** the same tasks, sorted into four quadrants instead of a list — urgent and important, important but not urgent, urgent but not important, neither. Urgency comes from the due date (you choose how close counts as urgent), importance from priority (P1 only, or P1 and P2). Switch to a flat list, filter by workspace, and decide whether Someday tasks count.
+
+- **Daily and weekly review:** a few minutes, one question at a time, with an end. The daily one walks what is late, your mail, the Inbox, what you committed to this week without naming a day, what has no estimate, and what today weighs against the hours you have. Each step is answered from inside it, so you never leave the review to act on what it just told you. The weekly one closes the week and opens the next: what you finished, the week in numbers, what is late, which projects have gone quiet.
+
+- **Task durations:** write down how long a task will take — `25`, `1h15`, `90 min`. Every page then carries a line saying how many tasks are on it, how much time they add up to, and what share of the capacity you set for that day or week. That last figure is a load pill: green, amber, over. A day filled to 140% says so before you start it, not at six in the evening. A parent whose open subtasks all have a duration takes their sum, written to the task itself; with one missing it keeps its own, or shows the partial sum as computed. Anything still unestimated is counted separately and listed in one place so you can fill a page of them in one pass. A duration set in the task's own field counts too, with the source chosen in Settings taking priority when both are present. Tags are the default; editing a tag estimate keeps the calendar duration. Every native estimate write is checked against server data; a dropped or refused duration switches back to tags and recovers the estimate. An unavailable verification stays queued for the next sync. Durations in days are ignored; estimates of 24 hours or more keep their exact minute value. Settings offers a conversion preview for open tasks, including subtasks, with skipped conflicts and a result per batch. Converting timed durations to tags preserves calendar blocks; untimed durations are cleared. Account labels and completed tasks are never deleted by conversion.
+
+- **I have time:** a pill next to the load figure on My week, projects, tags, the Inbox and Someday. Pick how long you have, 5 minutes to an hour or any duration you type, and a panel on the right lists the tasks that fit, by when they are due: overdue, today, tomorrow, this week, no date. It looks in the page you are on or everywhere, never guesses at a task with no estimate (it counts them, and offers to estimate them), and leaves the page behind it exactly as it was. Nothing is changed and nothing is remembered after a reload.
+
+- **Checklists:** lines like `- [ ] item` in a task's description show as small checkboxes in the task panel, with "3 of 7" beside the description. Ticking one changes only that line, so the same text still reads as plain text anywhere else. Editing is by rows rather than syntax: Enter adds the next item, Enter on an empty one leaves the list, Backspace at its start makes it plain text, and `[]` and a space starts a list, in the panel and in the new task window. Task rows never show the checklist lines.
+
+- **Folders:** group projects inside a folder the way most task apps do — a collapsible row you can expand or collapse on its own, in your personal projects as much as in any team workspace. Drop a project onto a folder to file it inside.
+
+- **Quick tasks on top of the list:** anything short enough to *do* rather than plan, gathered into its own bucket at the top of the week — under five minutes, or tagged `quick`. It sits at the top because that is when it is useful: the five minutes before a meeting are the five minutes those tasks are for. A task tagged quick but estimated at forty minutes is not quick, so it stays out and is reported as a contradiction instead. The same group leads a project, a tag, the Inbox and Someday, with the tasks that are late, due today or without a date (a quick task due next month stays where it is); each row says which section or project it comes from, and nothing is listed twice. On a board it is a blue first column, to look at rather than to drop tasks on. One switch in Settings turns it off everywhere.
+
+- **Visible subtasks:** drawn under their parent in the list, indented, rather than hidden behind a count you have to open the task to see. The parent shows how many are done and its estimate is the sum of theirs. They can be made and unmade by dragging — pull a row a little to the right over another and it goes inside it; pull a subtask out to the left and it is a task of its own again. The task composer works the same way: add subtasks inline while you write the parent, each one its own editable row, and they are all created together when you save.
+
+- **Project icons:** pick an icon for a project from a searchable catalog, next to the existing colour picker. It is saved with the project, so it follows the project between devices, not just this browser.
+
+- **Dashboard:** a board that changes with the period you pick. A day shows the hours you finished things in, a week adds its shape and a comparison with the one before, a quarter and a year read month by month. Edit layout lets you put the cards in the order you want, with the mouse or the keyboard, and Reset to default puts them back. The focus score weights what you finished by its priority — the only question worth asking about a finished week: whether the effort went where it mattered, or into whatever was easiest to close.
+
+- **Better logbook:** what you actually finished, grouped by day, and filtered by several projects and priorities at once rather than one at a time. It shares the period control with the dashboard, so the two always describe the same window.
+
+- **Custom themes:** ten accent colours plus one you pick yourself, every one drawn in light *and* dark and checked for contrast rather than chosen by eye. Dark mode is not a second-class version of the theme — it is the theme. Light, dark, or whatever the device is set to.
+
+- **Things to settle:** the contradictions no app should resolve on its own — a task both dated and labelled for the week, two estimates on one task, a quick task estimated at forty minutes. Each is listed with the options that match each possible intent, and nothing changes until you choose one.
+
+- **The keyboard, and a phone:** arrows walk the list, Enter opens a task, `E` finishes it, `T` schedules it, `G` then a letter goes somewhere, and typing anything else starts a search — the usual keys for task apps, with `?` for the list. On a phone, swipe a task aside for its actions and hold it for the rest, the two gestures a phone has in place of a pointer hovering over a row.
+
+## The basics you expect from a task app
+
+- **Drag and drop:** a task onto a day, a project, a tag, a section, a board column, or another task. In the sidebar, projects reorder by dragging and nest by dragging one a little to the right. Dropped straight onto a row, a task takes that row's place, and the order is saved with the task. Every destination has one fixed meaning, every drop says what it did, and every drop can be undone.
+
+- **List, board and calendar views:** with sorting and filtering behind one Display control, remembered separately for each page. Calendar offers 3 days, week and month, an undated-tasks sidebar, drag and drop, and resizing in 15-minute steps. Tag estimates stay in tags. Recurring forecasts are read-only. Completed history is shown on completion day; saved filters show the open tasks that match their query.
+
+- **Natural language in the task composer:** `Call Marc tomorrow at 9h p1 #Work @quick (25)` — the date, project, priority, tag and estimate are marked inside the field as you type, and fill the fields underneath, so you see what it understood before you commit. Click a mark, or press Backspace against it, and that reading turns back into ordinary text. Recurring dates use the usual grammar — `every monday`, `every 3 days`, `every!` — and the server works out each next date.
+
+- **Projects, sections, tags and favourites:** a page for each, nested and ordered by dragging, with the Inbox and Upcoming where you expect them. A section has a menu: edit, move to another project, duplicate with its tasks, copy its link, archive or delete.
+
+- **Search:** `⌘K`, or just start typing. It covers tasks, projects, sections, tags and every view in the app, which makes it the fastest way to anywhere.
+
+- **Multi-select:** `⌘`-click, with one bar at the foot of the window to give the lot a date, a project, a tag or a priority.
+
+- **Markdown in descriptions:** rendered in the list and in the task panel.
+
+- **And the rest:** undo (`⌘Z`) for a move, a completion, a deletion or a drop, with a deleted task coming back with its subtasks. Offline, with changes queued and sent when you reconnect, and installable as an app. English and French, and settings for the things people disagree about.
 
 ## Authentication and security
 
