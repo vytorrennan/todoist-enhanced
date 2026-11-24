@@ -18,8 +18,9 @@ describe('the demo is one account in two languages', () => {
     expect(fr.workspaces).toEqual(en.workspaces);
     expect(Object.values(fr.labels).map((l) => l.name)).toEqual(Object.values(en.labels).map((l) => l.name));
     expect(fr.collaborators).toEqual(en.collaborators);
-    expect(Object.values(en.collaborators).map((c) => c.full_name)).toContain('Jules Bertolino');
+    expect(Object.values(en.collaborators).map((c) => c.full_name)).toContain('Sam Okafor');
     expect(JSON.stringify(en)).not.toContain('Alex Martin');
+    expect(JSON.stringify(en)).not.toContain('Jules');
   });
 
   it('has the same projects, sections and tasks, on the same days and in the same places', () => {
