@@ -226,7 +226,7 @@ export function buildDemoSnapshot(locale: Locale = 'en', seed = 20260914): Snaps
   });
   addItem({
     content: L('Daily review', 'Revue du jour'),
-    description: L(`Start the day here: [open the Review](#/review).`, `Commencer la journée ici : [ouvrir la Revue](#/review).`),
+    description: L('Start the day here: open the Review.', 'Commencer la journée ici : ouvrez la Revue.'),
     project_id: 'personal', section_id: 'p-admin', priority: P1, labels: ['est-10'],
     due: due(today, undefined, everyDay),
   });

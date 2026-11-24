@@ -126,7 +126,8 @@ test.describe('setup and settings (v2)', () => {
     const link = page.locator('#about').getByRole('link', { name: 'Support the original developer' });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute('href', 'https://buymeacoffee.com/julesbertolino');
-    await expect(page.locator('#about')).toContainText('Jules-Valentin Bertolino');
+    await expect(page.locator('#about')).toContainText('Donations and the links above go to the original developer, Jules-Valentin Bertolino.');
+    await expect(page.locator('a[href="https://buymeacoffee.com/julesbertolino"]')).toHaveCount(1);
     await expect(page.locator('.coffee-callout')).toHaveCount(0);
   });
 
