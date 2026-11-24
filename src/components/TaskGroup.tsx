@@ -15,6 +15,8 @@ import { summariseLoad } from '@/domain/load';
 import type { Item } from '@/domain/types';
 
 export interface TaskGroupProps {
+  /** A key that stays with the group when other groups come and go: the caller's id, when it has one. */
+  stableKey?: string;
   title?: string;
   /** A control kept right after the title, outside the button that folds the group. */
   titleExtra?: ReactNode;

@@ -34,8 +34,6 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
   vi.mocked(auth.getToken).mockClear();
-  vi.mocked(auth.renewAfterRefusal).mockReset();
-  vi.mocked(auth.renewAfterRefusal).mockResolvedValue(null);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -89,18 +87,12 @@ describe('what a successful answer can be (#127)', () => {
 });
 
 describe('the token', () => {
-  it('is renewed once after a 401, and the second call uses the new one', async () => {
-    vi.mocked(auth.renewAfterRefusal).mockResolvedValue('renewed');
-    fetchMock
-      .mockResolvedValueOnce(answer(401))
-      .mockResolvedValueOnce(answer(200, '{"ok":1}'));
-
-    await expect(request('/x')).resolves.toEqual({ ok: 1 });
-    expect(auth.renewAfterRefusal).toHaveBeenCalledTimes(1);
-    const bearer = (call: number) =>
-      (fetchMock.mock.calls[call][1] as RequestInit & { headers: Record<string, string> }).headers.Authorization;
-    expect(bearer(0)).toBe('Bearer token');
-    expect(bearer(1)).toBe('Bearer renewed');
+  it('a session the server refuses is not renewed: the refusal is the answer', async () => {
+    fetchMock.mockResolvedValueOnce(answer(401));
+    const error = await request('/x').catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).isAuthError).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -217,5 +209,26 @@ describe('shared throttling', () => {
     await expect(request('/first')).rejects.toBeInstanceOf(ApiError);
     await expect(request('/second')).rejects.toBeInstanceOf(ApiError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the account a write is made for (S8)', () => {
+  it('names the account the window shows on a write, and not on a read', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => (key === 'tde.account' ? 'acct-1' : null),
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    });
+    try {
+      fetchMock.mockImplementation(async () => answer(200, '{"ok":true}'));
+      await request('/comments/1/reactions', { method: 'POST', json: { reaction: '👍' }, retries: 0 });
+      await request('/tasks/1', { retries: 0 });
+      const [, write] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const [, read] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect((write.headers as Record<string, string>)['X-Account-Id']).toBe('acct-1');
+      expect((read.headers as Record<string, string>)['X-Account-Id']).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

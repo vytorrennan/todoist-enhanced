@@ -36,6 +36,15 @@ for (const [mode, group] of [['list','day'], ['board','day'], ['table','day'], [
   });
 }
 
+test('on a Monday, the week that starts today and the Today column keep distinct keys, in list and board', async ({ demo: page }) => {
+  // Today is a Monday here, so the week that starts today used to share Today's id: React warns of a duplicate key, and the demo fails on that console error.
+  await page.clock.setFixedTime(new Date(2026, 10, 23, 12, 0, 0));
+  for (const mode of ['list', 'board'] as const) {
+    await seed(page, mode, 'week');
+    await expect(page.locator('.screen.active [data-task-id="today-489"]')).toHaveCount(1);
+  }
+});
+
 test('moving overdue tasks to today updates their group', async ({ demo: page }) => {
   await seed(page, 'list', 'day');
   await page.locator('.screen.active').getByRole('button', { name: 'Move all to today' }).click();

@@ -1,7 +1,6 @@
 import { CalendarSurface } from '@/components/CalendarSurface';
 import { pageClass } from '@/domain/pageLayout';
 import { InsightsButton } from '@/components/InsightsButton';
-import { HireNote } from '@/components/HireNote';
 import { useMemo, useState, type ReactNode } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { SubtasksProvider } from '@/components/TaskRow';
@@ -54,7 +53,6 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
   const updateMany = useStore((s) => s.updateMany);
   const confirm = useConfirm();
   const current = viewPrefs(prefs, 'upcoming');
-  const hireNoteOpen = useStore((s) => s.hireNote);
   /* Upcoming answers "when?", so it only groups by time: a day (the
      default), a week or a month. A grouping saved before this (project,
      priority, tag, none) reads as days (#98). */
@@ -142,7 +140,8 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
     const periods = new Map<string, { id: string; title: string; items: typeof scoped; dropTarget?: { kind: 'day'; date: Date }; capacityMinutes?: number | null }>();
     for (const day of days) {
       const start = group === 'day' ? day : group === 'week' ? startOfWeek(day, { weekStartsOn: 1 }) : startOfMonth(day);
-      const id = toApiDate(start);
+      // A week or a month has an id of its own: its first day can be today, which the Today column already uses as its id.
+      const id = group === 'day' ? toApiDate(start) : `${group}:${toApiDate(start)}`;
       let title = formatDayHeading(start, locale);
       if (group === 'week') {
         const weeks = differenceInCalendarWeeks(start, today, { weekStartsOn: 1 });
@@ -175,12 +174,10 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
   const extension = group === 'day' ? 7 : group === 'week' ? 28 : 90;
 
   /* Hosted by the first day of the list, when the page is that list; under the header otherwise. */
-  const hireInList = current.mode === 'list' && (group !== 'day' || columns.length > 0);
 
   return (
     <div className={pageClass(current)}>
       <PageHeader
-        hireNote={!hireInList}
         title={t('nav.upcoming')}
         actions={
           <>
@@ -215,7 +212,7 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
         <CalendarSurface viewKey="upcoming" items={items} onOpen={onOpen} onAddTaskTo={onAddTaskTo} />
       ) : current.mode === 'table' ? (
         <TableSurface viewKey="upcoming" childrenOf={childrenOf} onOpen={onOpen}
-          groups={columns.map((column) => ({ title: column.title, items: column.items, childrenOf, onOpen,
+          groups={columns.map((column) => ({ stableKey: column.id, title: column.title, items: column.items, childrenOf, onOpen,
             actions: column.action,
             onAddTask: column.dropTarget && column.id !== 'overdue' ? () => onAddTaskTo({ date: column.id }) : undefined }))} />
       ) : current.mode === 'board' ? (
@@ -234,10 +231,9 @@ function UpcomingBody({ onOpen, onInsights, onUnestimated, onAddTaskTo }: Upcomi
         />
       ) : (
         <div className="mode">
-          {columns.map((column, index) => (
+          {columns.map((column) => (
             <TaskGroup
               key={column.id}
-              lead={index === 0 && hireNoteOpen ? <HireNote /> : undefined}
               keepWhenEmpty
               title={column.title}
               items={column.items}

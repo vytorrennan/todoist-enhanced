@@ -606,7 +606,6 @@ export function Composer({
           <DateField
             variant="chip"
             icon="deadline"
-            premiumDeadline
             value={deadline}
             onChange={setDeadline}
             label={t('detail.deadline')}

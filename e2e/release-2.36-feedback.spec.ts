@@ -5,7 +5,7 @@ test('an empty project keeps section creation and exposes it in the project menu
   await page.evaluate(() => {
     const store = (window as unknown as { __store: { getState: () => any; setState: (value: any) => void } }).__store; // eslint-disable-line @typescript-eslint/no-explicit-any
     const state = store.getState();
-    store.setState({ snapshot: { ...state.snapshot, items: {}, sections: {} }, prefs: { ...state.prefs, views: {} }, hireNote: false });
+    store.setState({ snapshot: { ...state.snapshot, items: {}, sections: {} }, prefs: { ...state.prefs, views: {} } });
   });
   await go(page, '#/project/home');
   const active = page.locator('.screen.active');

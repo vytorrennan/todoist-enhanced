@@ -1,7 +1,6 @@
 import { useSafeDisconnect } from '@/hooks/useSafeDisconnect';
 import { useDataSnapshot } from '@/hooks/useDataSnapshot';
 import { PrivacyInformation } from '@/components/PrivacyInformation';
-import { HireNote } from '@/components/HireNote';
 import { MacAppCard } from '@/components/MacApp';
 import { EstimateConversion } from '@/components/overlays/EstimateConversion';
 import { canStoreDurations } from '@/domain/estimates';
@@ -12,6 +11,7 @@ import { COMPLETION_SOUNDS, playCompletionSound, type CompletionChoice, type Com
 import { GroupOrderEditor, SidebarNavEditor } from '@/components/SidebarNavEditor';
 import { AccentChoice, BackgroundChoice, DarkStyleChoice, ThemeChoice, LayoutChoice, DensityChoice, EstimateStorageChoice, TaskChipsChoice, TaskOpenChoice } from '@/components/Choosers';
 import { WorkspacePreview } from '@/components/WorkspacePreview';
+import { WorkspaceSettings } from '@/components/WorkspaceSettings';
 import { GroupPreview } from '@/components/GroupPreview';
 import { useT } from '@/hooks/useT';
 import { useStore } from '@/store/store';
@@ -30,9 +30,8 @@ import { projectTree } from '@/store/selectors';
 import { intlDate } from '@/lib/intl';
 
 /** Where the things this app only reads are changed. */
-const TODOIST_ACCOUNT_URL = 'https://app.todoist.com/app/settings/account';
 
-const SECTIONS = ['account', 'general', 'appearance', 'sidebar', 'lists', 'features', 'conflicts', 'about', 'privacy'] as const;
+const SECTIONS = ['account', 'workspaces', 'general', 'appearance', 'sidebar', 'lists', 'features', 'conflicts', 'about', 'privacy'] as const;
 
 /** A date with two digits in the day and a month that is short in both
  *  languages, so every option in the list is the same length. */
@@ -41,7 +40,7 @@ type Section = (typeof SECTIONS)[number];
 
 /** The glyph beside each entry of the menu. */
 const SECTION_ICON: Record<Section, IconName> = {
-  account: 'user', general: 'settings', appearance: 'palette', sidebar: 'sidebar',
+  account: 'user', workspaces: 'board', general: 'settings', appearance: 'palette', sidebar: 'sidebar',
   lists: 'list', features: 'sparkles', conflicts: 'warning', about: 'info', privacy: 'eye',
 };
 
@@ -100,7 +99,6 @@ export function SettingsView() {
         </div>
 
       </div>
-      <HireNote />
 
       <div className="settings">
         {/* The menu navigates the page rather than replacing it, so these are
@@ -139,10 +137,6 @@ export function SettingsView() {
                   <small>{user?.email ?? t('settings.connected')}</small>
                 </div>
                 <span className="setactions">
-                  <a className="btn" href={TODOIST_ACCOUNT_URL} target="_blank" rel="noreferrer noopener">
-                    <Icon name="external" size="sm" />
-                    {t('settings.manageTodoist')}
-                  </a>
                   <button className="btn danger" title={t('settings.disconnectHint')} onClick={() => void disconnect()}>
                     {t('settings.disconnect')}
                   </button>
@@ -194,6 +188,11 @@ export function SettingsView() {
           </section>
 
           {/* ---------------------------------------------------- General */}
+          <section className="setsection" id="workspaces">
+            <h2>{t('settings.workspaces')}</h2>
+            <WorkspaceSettings />
+          </section>
+
           <section className="setsection" id="general">
             <h2>{t('settings.general')}</h2>
 

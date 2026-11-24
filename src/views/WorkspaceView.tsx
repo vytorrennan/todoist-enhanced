@@ -1,3 +1,4 @@
+import { projectLink } from '@/api/links';
 import { isUncompletable } from '@/domain/types';
 import { useEffect, useMemo, useState } from 'react';
 import { subDays } from 'date-fns';
@@ -115,7 +116,7 @@ export function WorkspaceView({ workspaceId }: { workspaceId: string }) {
     if (demo) return;
     try { await updateWorkspaceRole(workspaceId, member.user_id, role); } catch { setRoles((all) => ({ ...all, [member.user_id]: previous })); setRoleFailed(true); }
   };
-  const openProject = (project: Project) => snapshot.projects[project.id] ? navigate('project', project.id) : window.open(`https://app.todoist.com/app/project/${encodeURIComponent(project.id)}`, '_blank', 'noopener,noreferrer');
+  const openProject = (project: Project) => navigate('project', project.id);
   const title = personal ? t('nav.myProjects') : snapshot.workspaces[workspaceId]?.name ?? t('group.workspace');
   const marker = (project: Project) => {
     const icon = readProjectIcon(project.description);
@@ -198,7 +199,7 @@ export function WorkspaceView({ workspaceId }: { workspaceId: string }) {
           : <div className="workspace-projects">{archived.map((project) => {
             const when = project.archived_date ? new Date(project.archived_date) : null;
             const stats = archivedProgress(project);
-            return <a className="workspace-project workspace-archive" key={project.id} onClick={demo ? (event) => event.preventDefault() : undefined} href={`https://app.todoist.com/app/project/${encodeURIComponent(project.id)}`} target="_blank" rel="noopener noreferrer" style={markerStyle(project.color)}>
+            return <a className="workspace-project workspace-archive" key={project.id} onClick={demo ? (event) => event.preventDefault() : undefined} href={projectLink(project.id)} rel="noopener noreferrer" style={markerStyle(project.color)}>
               <span className="workspace-project-name">{marker(project)}
                 <span className="workspace-name"><span>{project.name}</span>
                   {meta(stats?.done, stats?.open)}</span></span>

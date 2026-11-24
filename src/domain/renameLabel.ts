@@ -4,6 +4,9 @@ export function reservedLabel(name: string, weekLabel: string): boolean {
   const n = name.toLowerCase();
   return n === 'week' || n === weekLabel.toLowerCase() || Object.values(SYSTEM_LABELS).some((v) => v === n) || n === DEFAULT_MONTH_LABEL || n === monthLabel().toLowerCase() || n.startsWith('est-');
 }
+/** Whether the signed-in person can only read a project's tasks. */
+export const readOnlyProject = (snapshot: Snapshot, projectId: string): boolean => snapshot.projects[projectId]?.role === 'READ_ONLY';
+
 export const cleanLabelName = (name: string): string => name.trim().replace(/\s+/g, '-');
 export function labelRenameError(snapshot: Snapshot, id: string, name: string, weekLabel: string): 'empty' | 'reserved' | 'duplicate' | null {
   const old = snapshot.labels[id] ?? Object.values(snapshot.labels).find((label) => String(label.id) === String(id));
@@ -20,8 +23,9 @@ export function validLabelRename(snapshot: Snapshot, id: string, name: string, w
 export function renamedLabelSnapshot(snapshot: Snapshot, id: string, name: string): Snapshot {
   const label = snapshot.labels[id];
   if (!label) return snapshot;
-  const items = Object.fromEntries(Object.entries(snapshot.items).map(([key, item]) => [key, {
-    ...item, labels: item.labels.map((value) => value.toLowerCase() === label.name.toLowerCase() ? name : value),
-  }]));
+  // A read-only project keeps its labels: the server leaves them alone too.
+  const items = Object.fromEntries(Object.entries(snapshot.items).map(([key, item]) => [key, readOnlyProject(snapshot, item.project_id)
+    ? item
+    : { ...item, labels: item.labels.map((value) => value.toLowerCase() === label.name.toLowerCase() ? name : value) }]));
   return { ...snapshot, labels: { ...snapshot.labels, [id]: { ...label, name } }, items };
 }

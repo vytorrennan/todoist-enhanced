@@ -1,5 +1,4 @@
 import { useDataSnapshot } from '@/hooks/useDataSnapshot';
-import { TodoistMark } from '../TodoistMark';
 import { takeCommentsRequest } from '../TaskCommentBadge';
 import { useDismissiblePopover } from '@/hooks/useDismissiblePopover';
 import { Select } from '../Select';
@@ -9,7 +8,7 @@ import { AssigneeBadge } from '../AssigneeBadge';
 import { AssigneeField } from '../AssigneeField';
 import { useCreateTag } from '@/hooks/useCreateTag';
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { copyText, isTemporaryId, todoistTaskUrl } from '@/api/links';
+import { copyText, isTemporaryId, taskLink } from '@/api/links';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Overlay } from './Overlay';
 import { isTopOverlay } from './overlayStack';
@@ -820,21 +819,12 @@ export function TaskDetail({ taskId, onClose, onOpen }: TaskDetailProps) {
             </button>
             {menuOpen && (
               <div className="popover rowmenu" role="menu" ref={menuRef}>
-                <button
-                  className="opt"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    window.open(todoistTaskUrl(item.id), '_blank', 'noopener');
-                  }}
-                >
-                  <span><TodoistMark className="ic ic-sm menu-mark" /> {t('task.openInTodoist')}</span>
-                </button>
                 {!demo && !isTemporaryId(item.id) && (
                   <button
                     className="opt"
                     onClick={() => {
                       setMenuOpen(false);
-                      void copyText(todoistTaskUrl(item.id))
+                      void copyText(taskLink(item.project_id, item.id))
                         .then((ok) => toast(t(ok ? 'task.linkCopied' : 'task.linkNotCopied')));
                     }}
                   >
@@ -1141,7 +1131,6 @@ export function TaskDetail({ taskId, onClose, onOpen }: TaskDetailProps) {
           <div className="prop" data-prop="deadline">
             <PropLabel name={t('detail.deadline')} prop="deadline" />
             <DateField
-              premiumDeadline
               value={deadline ? toApiDate(deadline) : ''}
               label={t('detail.deadline')}
               /* The property's name is not drawn on a phone, where it is a chip:

@@ -4,9 +4,9 @@ import { accessChoices, accessOf, defaultAccess, isAccessLevel } from './project
 const workspace = { id: 'w', name: 'Studio' };
 
 describe('project access', () => {
-  it('offers Team only inside a workspace', () => {
-    expect(accessChoices(true)).toEqual(['restricted', 'team', 'public']);
-    expect(accessChoices(false)).toEqual(['restricted', 'public']);
+  it('offers Team only inside a workspace, and no public links', () => {
+    expect(accessChoices(true)).toEqual(['restricted', 'team']);
+    expect(accessChoices(false)).toEqual(['restricted']);
   });
 
   it("gives a new project the workspace's own default, or private when personal", () => {

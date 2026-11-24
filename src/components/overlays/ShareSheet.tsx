@@ -8,7 +8,7 @@ import { useT } from '@/hooks/useT';
 import { useStore } from '@/store/store';
 import { PersonAvatar } from '../PersonAvatar';
 import { WorkspaceAvatar } from '../WorkspaceFilter';
-import { copyText, todoistProjectUrl } from '@/api/links';
+import { copyText, projectLink } from '@/api/links';
 import { accessChoices, accessOf, isAccessLevel } from '@/domain/projectAccess';
 import { isSharedWithMe, OFFERED_ROLES, projectPeople, ROLES } from '@/domain/sharing';
 import type { TranslationKey } from '@/i18n';
@@ -82,7 +82,7 @@ export function ShareSheet({ projectId, onClose }: { projectId: string | null; o
 
   const copyLink = () => {
     if (!projectId) return;
-    void copyText(todoistProjectUrl(projectId)).then((ok) => toast(t(ok ? 'task.linkCopied' : 'task.linkNotCopied')));
+    void copyText(projectLink(projectId)).then((ok) => toast(t(ok ? 'task.linkCopied' : 'task.linkNotCopied')));
   };
 
   async function invite() {

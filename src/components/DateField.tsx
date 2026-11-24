@@ -9,7 +9,6 @@ import { useStore } from '@/store/store';
 import { DatePicker, dayAndTime, parse, type DateShortcut, type RecurrenceReading } from './DatePicker';
 import type { DurationControl } from './DatePickerPanels';
 import { firstDayOfRule } from '@/domain/repeatRule';
-import { canStoreDurations } from '@/domain/estimates';
 
 interface DateFieldProps {
   /** An API date string, or empty for no date. */
@@ -35,8 +34,6 @@ interface DateFieldProps {
   clearable?: boolean;
   /** The quick choices, when the field's context has its own (see DatePicker). */
   shortcuts?: DateShortcut[];
-  /** This date is a Todoist Pro/Business deadline. */
-  premiumDeadline?: boolean;
   /** A field, or a chip in the composer's planning line (#113). */
   variant?: 'field' | 'chip';
   /** The glyph beside the value: a calendar, or the deadline's flag. */
@@ -72,15 +69,12 @@ interface DateFieldProps {
  */
 export function DateField({
   value, onChange, label, placeholder, min, max, clearable = true, shortcuts,
-  variant = 'field', icon = 'calendar', withTime = false, premiumDeadline = false,
+  variant = 'field', icon = 'calendar', withTime = false,
   recurrence = null, onRecurrence, onClearRecurrence, showRecurrenceClear = true, duration, skip,
 }: DateFieldProps) {
   const chip = variant === 'chip';
   const { t, locale } = useT();
   const dateFormat = useStore((s) => s.prefs.dateFormat);
-  const user = useStore((s) => s.snapshot.user);
-  const demo = useStore((s) => s.demo);
-  const locked = premiumDeadline && !value && !demo && !canStoreDurations(user);
   const hour12 = useStore((s) => s.prefs.hour12);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{ top?: number; bottom?: number; left: number; maxHeight: number } | null>(null);
@@ -189,7 +183,7 @@ export function DateField({
         visibility: position ? undefined : 'hidden',
       }}
     >
-      {locked ? <div className="deadline-pro-notice"><p>{t('deadline.proRequired')} <a href="https://www.todoist.com/pricing" target="_blank" rel="noopener noreferrer">{t('deadline.learnMore')}</a></p></div> : <DatePicker
+      <DatePicker
         value={value}
         label={label}
         min={min}
@@ -234,7 +228,7 @@ export function DateField({
             )}
           </>
         ) : undefined}
-      />}
+      />
     </div>
   );
 

@@ -96,7 +96,7 @@ describe('changes waiting for one account, and another one signs in (#129)', () 
     expect(db.queue).toHaveLength(2);
     const { toasts, pendingCount } = useStore.getState();
     expect(toasts).toHaveLength(1);
-    expect(toasts[0].message).toBe('2 changes made offline with another Todoist account were not sent.');
+    expect(toasts[0].message).toBe('2 changes made offline with another account were not sent.');
     expect(pendingCount).toBe(0);
   });
 

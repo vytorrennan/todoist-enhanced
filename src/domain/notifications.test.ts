@@ -104,6 +104,19 @@ describe('notification sentences match Todoist', () => {
     expect(sentenceKey(read)).toBe('notif.type.workspace_joined_you');
   });
 
+  it('a workspace invitation carries its answer, so it can be accepted from the bell', () => {
+    const n: LiveNotification = {
+      id: 'ws1', notification_type: 'workspace_invitation_created', from_uid: 'u9', workspace_id: 'w1',
+      invitation_id: 'inv1', invitation_secret: 'secret-1', from_user: { full_name: 'Olivia' },
+    };
+    const read = readNotification(n, me());
+    expect(read.invitation).toEqual({ id: 'inv1', secret: 'secret-1' });
+    expect(read.answered).toBeNull();
+    const answered = readNotification({ ...n, state: 'accepted' }, me());
+    expect(answered.invitation).toBeNull();
+    expect(answered.answered).toBe('accepted');
+  });
+
   it('names the karma rank reached', () => {
     const read = readNotification({ id: 'e', notification_type: 'karma_level', karma_level: 2 }, me());
     expect(read.level).toBe('novice');

@@ -279,8 +279,8 @@ plain.describe('the sign-in on a phone (#292)', () => {
     await plainExpect(page.getByRole('heading', { level: 2 })).toBeVisible();
     const sheet = (await page.locator('.signin-main').boundingBox())!;
     plainExpect(Math.round(sheet.y + sheet.height)).toBe(PHONE.height);
-    // The Todoist button carries Todoist's mark, and the demo button is one line.
-    await plainExpect(page.locator('.connect-submit .tdlogo')).toBeVisible();
+    // The sign-in button is there, and the demo button is one line.
+    await plainExpect(page.locator('.connect-submit')).toBeVisible();
     plainExpect((await page.locator('.connect-demo').boundingBox())!.height).toBeLessThan(60);
     await page.locator('.connect-privacy-line').getByRole('button', { name: 'Privacy' }).click();
     const privacy = page.getByRole('dialog', { name: 'Privacy' });

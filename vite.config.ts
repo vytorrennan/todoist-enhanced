@@ -4,19 +4,18 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
 
 /**
- * The security headers the host sends, from public/.htaccess.
+ * The security headers the app is served with.
  *
- * Apache applies them in production. `npm run preview` applies the same ones
- * here so a build can be checked against the policy before it is uploaded.
- * Cloudflare Workers serves the same policy from public/_headers. Keep all
- * three in step.
+ * The server (server/app.ts) sends the same policy for the built app, and
+ * `npm run preview` sends it here, so a build is checked against the policy it
+ * will run under. Keep them in step.
  */
 const SECURITY_HEADERS = {
   'Content-Security-Policy': [
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self' https://api.todoist.com",
+    "connect-src 'self'",
     "img-src 'self' data: blob: https:",
     "font-src 'self'",
     "manifest-src 'self'",
@@ -33,64 +32,15 @@ const SECURITY_HEADERS = {
 };
 
 /**
- * Where this copy of the app is served from, ending with `/`.
- *
- * "Continue with Todoist" identifies the app by the URL of a small JSON file
- * it hosts (`oauth/client.json`), and Todoist only sends people back to the
- * addresses that file lists. Written by hand for the official site, it made
- * every other copy fail with "Invalid redirect URI": a fork on its own domain
- * asked Todoist to check its address against this site's list. A copy built
- * with `PUBLIC_URL=https://example.com/ npm run build` describes itself
- * instead. Left unset, the file is exactly the official site's, as before.
+ * The server the app talks to in development and preview: the backend on this
+ * machine, which `npm run server` starts. Set VITE_API_PROXY to point elsewhere.
  */
-const OFFICIAL_URL = 'https://todoistenhanced.julesbertolino.fr/';
-const PUBLIC_URL = (() => {
-  const url = (process.env.PUBLIC_URL ?? '').trim() || OFFICIAL_URL;
-  return url.endsWith('/') ? url : `${url}/`;
-})();
-/** The dev server Todoist also accepts, so signing in works in development. */
-const DEV_REDIRECT = 'http://localhost:5192/';
-
-/** The build-time constants the app reads (declared in src/vite-env.d.ts); the unit tests use them too. */
-export const APP_DEFINE = {
-  __PUBLIC_URL__: JSON.stringify(PUBLIC_URL),
-  __OAUTH_DEV_REDIRECT__: JSON.stringify(DEV_REDIRECT),
+const API_PROXY = {
+  '/api': {
+    target: process.env.VITE_API_PROXY ?? 'http://127.0.0.1:8787',
+    changeOrigin: false,
+  },
 };
-
-/**
- * `oauth/client.json`, built for `PUBLIC_URL`: emitted with the build, and
- * served by the dev server. `vite preview` serves the built one from `dist/`,
- * which is the file that will be uploaded.
- */
-function oauthClientDocument(publicUrl: string): Plugin {
-  const body = `{
-  "client_id": "${publicUrl}oauth/client.json",
-  "client_name": "Enhanced for Todoist",
-  "client_uri": "${publicUrl}",
-  "logo_uri": "${publicUrl}icon-192.png",
-  "redirect_uris": [
-    "${publicUrl}",
-    "${DEV_REDIRECT}"
-  ],
-  "grant_types": ["authorization_code", "refresh_token"],
-  "response_types": ["code"],
-  "token_endpoint_auth_method": "none"
-}
-`;
-  return {
-    name: 'oauth-client-document',
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        if (req.url?.split('?')[0] !== '/oauth/client.json') return next();
-        res.setHeader('Content-Type', 'application/json');
-        res.end(body);
-      });
-    },
-    generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'oauth/client.json', source: body });
-    },
-  };
-}
 
 /**
  * Hugeicons draws its paths with five decimals. On a 24px grid two are far
@@ -109,19 +59,17 @@ function roundHugeiconsPaths(): Plugin {
 }
 
 export default defineConfig({
-  // Relative base so the build can be dropped into any subfolder on Infomaniak.
+  // Relative base so the build can be dropped into any subfolder.
   base: './',
-  preview: { headers: SECURITY_HEADERS },
+  preview: { headers: SECURITY_HEADERS, proxy: API_PROXY },
   // Trace HTML files are test artefacts, never application pages to reload.
-  server: { watch: { ignored: ['**/test-results*/**', '**/playwright-report/**'] } },
-  define: APP_DEFINE,
+  server: { proxy: API_PROXY, watch: { ignored: ['**/test-results*/**', '**/playwright-report/**'] } },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   plugins: [
     react(),
     roundHugeiconsPaths(),
-    oauthClientDocument(PUBLIC_URL),
     VitePWA({
       /* The app decides when a new build takes over (src/lib/appUpdate.ts):
          only after the person chooses Reload. */
@@ -139,7 +87,7 @@ export default defineConfig({
         id: './',
         name: 'Enhanced for Todoist',
         short_name: 'Enhanced',
-        description: 'An independent project, not created by, affiliated with, or supported by Todoist. A local-first client built around planning a week.',
+        description: 'Plan your week. A local-first client for your own tasks, kept on your own server.',
         theme_color: '#d1453b',
         background_color: '#ffffff',
         display: 'standalone',
@@ -174,7 +122,7 @@ export default defineConfig({
         // registerSW), then claims every tab, so no tab runs on two builds.
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        // The Todoist API is never cached: the app owns its own offline cache in IndexedDB.
+        // The API is never cached: the app owns its own offline cache in IndexedDB.
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [],
       },

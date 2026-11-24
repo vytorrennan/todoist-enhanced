@@ -1,11 +1,6 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
 
-/** Where this copy is served from, ending with `/`. Set with PUBLIC_URL at build time (vite.config.ts). */
-declare const __PUBLIC_URL__: string;
-/** The development address Todoist also returns to, listed in oauth/client.json. */
-declare const __OAUTH_DEV_REDIRECT__: string;
-
 interface Window {
   /** Present only inside the desktop app (desktop/), which adds it in its preload script. */
   enhancedDesktop?: {
@@ -13,7 +8,6 @@ interface Window {
     /** Added in version 1.1 of the app: an older app has neither. */
     getQuickAddShortcut?: () => Promise<string>;
     setQuickAddShortcut?: (accelerator: string) => Promise<{ ok: boolean; shortcut: string }>;
-    openSignIn?: (url: string) => Promise<boolean>;
     /** Added in version 1.1.1 of the app: an older app does not say its version. */
     getVersion?: () => Promise<string | null>;
     testMode?: boolean;

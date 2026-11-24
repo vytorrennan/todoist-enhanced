@@ -104,13 +104,15 @@ const setDue = (id: string, due: StoredDue, lang: string, uuid: string): Command
 });
 
 /** With the caller's sync token, so the answer carries the task as it now stands. */
-const post = (commands: Command[], syncToken = '*', resources: string[] = []) =>
+const post = (commands: Command[], syncToken = '*', resources: string[] = [], accountId?: string) =>
   request<SyncResponse>('/sync', {
     method: 'POST',
     form: {
       sync_token: syncToken,
       resource_types: JSON.stringify(resources),
       commands: JSON.stringify(commands),
+      // The account these writes were made for: the server refuses them for any other.
+      ...(accountId ? { account_id: accountId } : {}),
     },
   });
 
@@ -122,8 +124,12 @@ async function readDue(id: string): Promise<ServerDue | null> {
   return task.due ?? null;
 }
 
-/** Everything but the network failing means the question has an answer. */
-const isNetwork = (error: unknown) => !(error instanceof ApiError && error.isRefusal);
+/**
+ * Everything but the network failing means the question has an answer. A window
+ * on another account has not answered it: the journal stays for the account
+ * that made the change.
+ */
+const isNetwork = (error: unknown) => !(error instanceof ApiError && error.isRefusal && !error.isAccountChanged);
 
 /**
  * Puts the language back, unless someone else has touched the task since.
@@ -138,7 +144,7 @@ async function restore(entry: RepairEntry): Promise<boolean> {
       && current.lang !== entry.original.lang;
     if (untouched) {
       const uuid = stepUuid(entry.closeUuid, 'restore');
-      const response = await post([setDue(entry.itemId, entry.original, entry.original.lang, uuid)]);
+      const response = await post([setDue(entry.itemId, entry.original, entry.original.lang, uuid)], '*', [], entry.userId);
       // HTTP 200 can still contain a command refusal or omit its status.
       // Keep the journal until restoration is explicitly acknowledged.
       if (response?.sync_status?.[uuid] !== 'ok') return false;
@@ -207,7 +213,7 @@ export async function repairClose(
         { type: 'item_close', uuid: closeUuid, args: { id: entry.itemId } },
       /* Its answer's token becomes the snapshot's: it must carry every
          resource a read does, or what changed meanwhile is skipped (#467). */
-      ], ctx.syncToken, [...SYNC_RESOURCE_TYPES]);
+      ], ctx.syncToken, [...SYNC_RESOURCE_TYPES], ctx.userId);
     } catch (error) {
       if (isNetwork(error)) return { kind: 'interrupted' };
       entry.phase = 'restoring';

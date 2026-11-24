@@ -14,6 +14,8 @@ export function idsTouchedBy(cmd: Command): string[] {
   const args = cmd.args as Record<string, unknown>;
   const ids: string[] = [];
   if (typeof args.id === 'string') ids.push(args.id);
+  // A move names its project as `project_id`.
+  if (cmd.type.startsWith('project_move_to') && typeof args.project_id === 'string') ids.push(args.project_id);
   for (const key of ['items', 'projects', 'sections']) {
     const list = args[key];
     if (Array.isArray(list)) {

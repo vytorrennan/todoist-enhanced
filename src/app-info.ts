@@ -1,10 +1,7 @@
 /**
  * What the app calls itself, and where it lives.
  *
- * The name follows Todoist's brand guidelines, which require a third-party
- * app to be named "x for Todoist" so it cannot be taken for an official
- * product, and require its description to say that it is not affiliated.
- * Both the sign-in screen and the About section read from here, so the two
+ * The sign-in screen and the About section both read from here, so the two
  * cannot drift apart.
  */
 export const APP_NAME = 'Enhanced for Todoist';
@@ -15,7 +12,7 @@ export const PRIVACY_EMAIL = 'jules.bertolino@alias-digital.fr';
 /* A copy served with the app: the GitHub address redirects to another host first, which is why the photo arrived late. */
 export const AUTHOR_AVATAR_URL = `${import.meta.env.BASE_URL}author.png`;
 
-/** The official site, for the About section. A self-hosted copy's own address is PUBLIC_URL (vite.config.ts). */
+/** The official site, for the About section. */
 export const SITE_URL = 'https://todoistenhanced.julesbertolino.fr';
 export const GITHUB_URL = 'https://github.com/julesvbertolino/todoist-enhanced';
 export const LINKEDIN_URL = 'https://www.linkedin.com/in/julesbertolino/';
@@ -39,5 +36,3 @@ export const MAC_APP_DOWNLOAD_URL = {
 } as const;
 /** Where a bug or an idea goes. The same form the README and GitHub point at. */
 export const FEEDBACK_URL = 'https://forms.fillout.com/t/79WYJmkgqkus';
-export const TODOIST_DEVELOPER_URL =
-  'https://app.todoist.com/app/settings/integrations/developer';

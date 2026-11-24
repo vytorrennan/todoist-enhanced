@@ -270,14 +270,9 @@ bare('#128 with site storage blocked, the connect screen appears and the demo st
     });
   });
   await page.goto('/');
-  // Not stuck on "Loading…": the connect screen is there.
-  const signIn = page.getByRole('button', { name: 'Connect with Todoist' });
+  // Not stuck on "Loading…": the sign-in screen is there.
+  const signIn = page.locator('button.connect-submit');
   await expect(signIn).toBeVisible();
-
-  // Signing in cannot come back without storage: it says so, and stays.
-  await signIn.click();
-  await expect(page.getByRole('alert')).toContainText("blocking this site's storage");
-  await expect(page).toHaveURL(/localhost|127\.0\.0\.1/);
   await expect(signIn).toBeEnabled();
 
   // The demo still opens (it is only not remembered on reload).

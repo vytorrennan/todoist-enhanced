@@ -6,23 +6,21 @@ import { request } from './client';
  *
  * In Todoist a comma splits a filter into several lists shown one under the
  * other (`today, overdue` is two lists). `GET /tasks/filter` refuses commas,
- * so each part is asked for on its own. A comma inside parentheses, or
- * escaped as `\,` in a name, is part of the query and is not a split.
+ * so each part is asked for on its own. A comma inside parentheses, or inside
+ * a double-quoted name (`#"Work, home"`), is part of the query and is not a
+ * split. The server's checkFilterQuery splits the same way.
  */
 export function splitQuery(query: string): string[] {
   const parts: string[] = [];
   let depth = 0;
+  let quoted = false;
   let current = '';
-  for (let at = 0; at < query.length; at += 1) {
-    const char = query[at];
-    if (char === '\\' && at + 1 < query.length) {
-      current += char + query[at + 1];
-      at += 1;
-      continue;
-    }
-    if (char === '(') depth += 1;
-    if (char === ')') depth = Math.max(0, depth - 1);
-    if (char === ',' && depth === 0) {
+  for (const char of query) {
+    // A comma inside a quoted name is part of that name, as the server reads it.
+    if (char === '"') quoted = !quoted;
+    if (!quoted && char === '(') depth += 1;
+    if (!quoted && char === ')') depth = Math.max(0, depth - 1);
+    if (char === ',' && depth === 0 && !quoted) {
       parts.push(current);
       current = '';
       continue;

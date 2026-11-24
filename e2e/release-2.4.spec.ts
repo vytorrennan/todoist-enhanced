@@ -23,6 +23,8 @@ test('the favourite star on the Filters list is always there and toggles in one 
   await go(page, '#/filters');
   const cards = page.locator('.screen.active .tagcard');
   const stars = cards.locator('.tagcard-star');
+  // The list fills in after the page opens: wait for its first card before counting them.
+  await expect(cards.first()).toBeVisible();
   await expect(stars).toHaveCount(await cards.count());
   const star = stars.first();
   const before = await star.getAttribute('aria-pressed');

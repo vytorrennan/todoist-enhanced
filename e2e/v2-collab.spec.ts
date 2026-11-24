@@ -1,13 +1,13 @@
 import { test, expect, go, rows } from './demo';
 
 test.describe('notifications, sharing and assignment (v2)', () => {
-  test('the bell opens Todoist notifications first when one is unread, and marking them read clears it', async ({ demo: page }) => {
+  test('the bell opens the server notifications first when one is unread, and marking them read clears it', async ({ demo: page }) => {
     await go(page, '#/week');
     const bell = page.locator('.sidebar .side-top').getByRole('button', { name: 'Notifications' });
     await expect(bell.locator('.belldot')).toBeVisible();
     await bell.click();
     const dialog = page.getByRole('dialog', { name: 'Notifications' });
-    await expect(dialog.getByRole('button', { name: /^From Todoist/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(dialog.getByRole('button', { name: /^From the server/ })).toHaveAttribute('aria-pressed', 'true');
     await expect(dialog.locator('.notiflist li')).toHaveCount(2);
     await expect(dialog.locator('.notiflist li.unread')).toHaveCount(1);
     await dialog.getByRole('button', { name: 'Mark all as read' }).click();

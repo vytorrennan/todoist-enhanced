@@ -1,7 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { applySync, resolveTempIds } from './sync';
-import { emptySnapshot, type Snapshot } from '@/domain/types';
+import { describe, expect, it, vi } from 'vitest';
+import { applySync, resolveTempIds, sync } from './sync';
+import { request } from './client';
+import { emptySnapshot, type Snapshot, type Workspace } from '@/domain/types';
 import { item } from '@/test/items';
+
+vi.mock('./client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./client')>()),
+  request: vi.fn(),
+}));
 
 const section = (id: string, project_id: string) => ({
   id, project_id, name: id, section_order: 1, is_archived: false, is_deleted: false,
@@ -108,5 +114,26 @@ describe('incremental sync preserves unchanged data', () => {
     expect(changed.items.a.content).toBe('After');
     const deleted = applySync(changed, { full_sync: false, sync_token: 'four', items: [{ ...task, is_deleted: true }] });
     expect(deleted.items.a).toBeUndefined();
+  });
+});
+
+describe('temporary folders', () => {
+  it('a folder made before the server answered takes its real id, and is not kept twice', async () => {
+    const { resolveTempIds } = await import('./sync');
+    const { emptySnapshot } = await import('@/domain/types');
+    const snapshot = { ...emptySnapshot(), folders: { 'temp-folder': { id: 'temp-folder', name: 'Clients', workspace_id: 'w1', child_order: 1 } } };
+    const resolved = resolveTempIds(snapshot, { 'temp-folder': 'realfolder0000000000000000000001' });
+    expect(Object.keys(resolved.folders ?? {})).toEqual(['realfolder0000000000000000000001']);
+  });
+});
+
+describe('an access-triggered full read', () => {
+  it('takes the folders from the answer and asks for no folder page', async () => {
+    const sent = vi.mocked(request);
+    sent.mockReset();
+    sent.mockResolvedValue({ full_sync: true, sync_token: '6f1c2b:9', folders: [], items: [] });
+    const workspaces = { w1: { id: 'w1', name: 'Work' } as Workspace };
+    await sync('6f1c2b:4', undefined, workspaces);
+    expect(sent.mock.calls.map((call) => call[0])).toEqual(['/sync']);
   });
 });

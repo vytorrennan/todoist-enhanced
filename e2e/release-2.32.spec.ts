@@ -58,7 +58,7 @@ test('#429 only the planning pages choose where the No date panel looks', async 
   await expect(upcoming.locator('.calendar-undated-card').first()).toBeVisible();
 });
 
-test('#419 a link to a Todoist item Enhanced has opens it here, not in a new tab', async ({ demo: page }) => {
+test('#419 a link to a Todoist item is an ordinary link now, and opens in a new tab', async ({ demo: page }) => {
   // Reads the store through `window.__store`, which only the development build exposes (CI's development step runs it).
   test.skip(process.env.PLAYWRIGHT_DEV !== '1', 'Run npm run e2e:release for the controlled development fixtures');
   await go(page, '#/project/site');
@@ -77,10 +77,14 @@ test('#419 a link to a Todoist item Enhanced has opens it here, not in a new tab
   await page.locator(`.screen.active [data-task-id="${target.host}"]`).first().click();
   const detail = page.getByRole('dialog', { name: 'Task' });
   await expect(detail.getByRole('link', { name: 'the garage' })).toBeVisible();
-  await detail.getByRole('link', { name: 'the garage' }).click();
-  await expect(detail.getByRole('textbox', { name: /Call the garage/ }).or(detail.getByText('Call the garage').first())).toBeVisible();
-  await expect(detail.getByRole('link', { name: 'the garage' })).toHaveCount(0);
-  expect(opened).toBe(0);
+  // Enhanced has no Todoist items of its own to open, so a Todoist link is an ordinary link: it opens in a new tab.
+  const [garage] = await Promise.all([
+    page.context().waitForEvent('page'),
+    detail.getByRole('link', { name: 'the garage' }).click(),
+  ]);
+  await garage.close();
+  await expect(detail).toBeVisible();
+  expect(opened).toBe(1);
   // Another site still opens in a new tab.
   await page.keyboard.press('Escape');
   await page.locator(`.screen.active [data-task-id="${target.host}"]`).first().click();

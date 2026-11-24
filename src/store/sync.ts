@@ -6,8 +6,7 @@ import { clearProjectPeopleCache } from './collab';
 import { usePomodoro } from './pomodoro';
 /** Talking to Todoist: signing in and out, reading, writing, the offline queue, the demo. */
 import { verifyEstimateWrites } from './estimate-safety';
-import { auth } from '@/api/auth';
-import { completeSignIn } from '@/api/oauth';
+import { auth, flushPendingLogouts, sendLogoutsWhenOnline } from '@/api/auth';
 import { ApiError, NotConnectedError } from '@/api/client';
 import { applySync, applyWrite, sync } from '@/api/sync';
 import { resolveCommandIds, sendCommands, type Command } from '@/api/commands';
@@ -386,19 +385,15 @@ export const createSyncSlice: Slice<SyncSlice> = (set, get) => ({
   pendingCount: 0,
   demo: false,
   resolvedIds: {},
-  signInError: null,
   async init() {
     /* Always finishes. A launch that throws anywhere below used to leave the
        app on "Loading…" for ever, because nothing was listening for the
        rejection and `ready` never became true. Whatever went wrong is kept as
        the sync error, and the connect screen appears either way (#128). */
     try {
-      /* A page load that is Todoist sending the person back from its consent
-         page finishes the sign-in first, so what follows finds a connection. */
-      const signIn = await completeSignIn();
-      if (signIn === 'signed-in') { invalidateSession(); sessionRemove('demo'); auth.forgetPastedToken(); }
-      if (signIn === 'denied' || signIn === 'failed') set({ signInError: signIn });
-
+      // Sessions signed out while offline are revoked now, if the server can be reached.
+      void flushPendingLogouts();
+      sendLogoutsWhenOnline();
       const [storedPrefs, snapshot, queue, storedKept] = await Promise.all([
         idb.loadPrefs<Preferences>(PREFS_KEY),
         idb.loadSnapshot(),
@@ -433,8 +428,7 @@ export const createSyncSlice: Slice<SyncSlice> = (set, get) => ({
         /* A fresh sign-in reads the whole account, whatever the device held,
            and reads it before sending anything: only then is it known whose
            account this is, and so which of the queued changes are theirs. */
-        if (signIn === 'signed-in') void get().refresh(true, { legacyOwner: snapshot.user?.id ?? null });
-        else void get().refresh(snapshot.syncToken === '*');
+        void get().refresh(snapshot.syncToken === '*');
       }
     } catch (error) {
       set({ syncError: String(error) });

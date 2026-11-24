@@ -12,7 +12,6 @@ import { FilterMark } from './FilterMark';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './Icon';
-import { TodoistMark } from './TodoistMark';
 import { WorkspaceAvatar } from './WorkspaceFilter';
 import { useT } from '@/hooks/useT';
 import { useData } from '@/hooks/useData';
@@ -597,10 +596,6 @@ export function Sidebar({
               {t('nav.coffee')}
             </button>
             <hr />
-            <button onClick={() => window.open('https://app.todoist.com', '_blank', 'noopener')}>
-              <TodoistMark className="ic ic-sm menu-mark" />
-              {t('nav.openTodoist')}
-            </button>
             <button className="danger" onClick={() => { setMenuOpen(false); void disconnect(); }}>
               <Icon name="logout" />
               {demo ? t('demo.exit') : t('nav.signOut')}

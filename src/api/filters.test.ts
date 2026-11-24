@@ -14,8 +14,8 @@ describe('splitQuery', () => {
     expect(splitQuery('(a, b) & c, d')).toEqual(['(a, b) & c', 'd']);
   });
 
-  it('leaves an escaped comma in a name alone', () => {
-    expect(splitQuery('#Work\\, home & today, overdue')).toEqual(['#Work\\, home & today', 'overdue']);
+  it('a comma in a quoted name is not a split, the way the server reads it', () => {
+    expect(splitQuery('#"Work, home" & today, overdue')).toEqual(['#"Work, home" & today', 'overdue']);
   });
 
   it('drops empty parts', () => {
@@ -32,5 +32,8 @@ describe('reported negated date filters (#274)', () => {
   it('keeps separate negated date lists intact', () => {
     expect(splitQuery('!(date before: tomorrow), !(deadline after: today), !(due: today)'))
       .toEqual(['!(date before: tomorrow)', '!(deadline after: today)', '!(due: today)']);
+  });
+  it('a comma inside a quoted name does not split the query', () => {
+    expect(splitQuery('today, #"Work, home"')).toEqual(['today', '#"Work, home"']);
   });
 });

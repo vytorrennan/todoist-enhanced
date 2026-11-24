@@ -239,4 +239,12 @@ describe('closing a recurring task whose rule and language disagree (#432)', () 
     const result = await sendCommands('token', [close]);
     expect(result.failures).toHaveLength(1);
   });
+
+  it('a window that changed account keeps its writes queued instead of dropping them', async () => {
+    const close = command('item_close', { id: 'a' });
+    sent.mockRejectedValue(new ApiError('Conflict', 409, { error_tag: 'ACCOUNT_CHANGED', error: 'changed' }));
+    // Nothing is reported as refused: the error reaches the caller, which keeps the queue.
+    await expect(sendCommands('token', [close], { userId: 'u' })).rejects.toBeInstanceOf(ApiError);
+    expect(sent.mock.calls[0][1]).toMatchObject({ form: { account_id: 'u' } });
+  });
 });
