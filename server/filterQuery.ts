@@ -1,5 +1,5 @@
 import { ApiFailure, type Db } from './db';
-import { dayPart, addDays } from './dates';
+import { addDays, dayPart, isDay } from './dates';
 import type { ItemRow } from './serialize';
 import { parseLabels } from './serialize';
 import { VISIBLE_PROJECT_SQL, visibleSql } from './access';
@@ -9,7 +9,7 @@ import { VISIBLE_PROJECT_SQL, visibleSql } from './access';
  *
  * The operators are Todoist's: `&` and, `|` or, `!` not, and parentheses.
  * The terms are the ones the app's filters use: dates (`today`, `tomorrow`,
- * `overdue`, `no date`, `next 7 days`, a day as `2026-12-01`, `due before:`,
+ * `overdue`, `no date`, `next 7 days`, a day as `2026-12-01` or `due: 2026-12-01`, `due before:`,
  * `due after:`), priorities (`p1` to `p4`), projects (`#Name`, and
  * `##Name` for a project and everything under it), labels (`@name`), sections
  * (`/name`), people (`assigned to: me`, `assigned to: none`, `assigned by:
@@ -162,6 +162,12 @@ function compileTerm(raw: string): TermTest | null {
   if (priority) {
     const wanted = 5 - Number(priority[1]);
     return (_ctx, item) => item.priority === wanted;
+  }
+  // `due: 2030-01-15` is the tasks due that day, and `date: 2030-01-15` those scheduled for it.
+  const dueOn = /^(due|date): ?(\d{4}-\d{2}-\d{2})$/.exec(lower);
+  if (dueOn && isDay(dueOn[2])) {
+    const [, field, date] = dueOn;
+    return (_ctx, item) => (field === 'due' ? dueDay(item) ?? deadlineDay(item) : dueDay(item)) === date;
   }
   // `due` is the scheduled day, or the deadline when a task has no scheduled day; `date` is the scheduled day only.
   const dueBound = /^(due|date) (before|after): ?(\d{4}-\d{2}-\d{2})$/.exec(lower);

@@ -8,8 +8,7 @@ import { type Args, makeCtx } from './ctx';
 import { filterPage, MAX_NAME, renameOnItems } from './labels';
 import { loadNote } from './notes';
 import { todayIn } from './dates';
-import { readNaturalDate } from '../src/domain/nlp';
-import { ruleFromString } from '../src/domain/repeatRule';
+import { dueFromWords } from './due';
 import { collaboratorShape, commentShape, folderShape, labelShape, locationReminderApiShape, projectShape, reminderApiShape, sectionShape, taskShape, userApiShape, workspaceApiShape } from './rest-shapes';
 import { locationReminderList, reminderList, visibleLocationReminder, visibleReminder } from './reminders';
 import { listActivity } from './activity';
@@ -45,6 +44,48 @@ function listOf(value: string | null): unknown[] | undefined {
     }
   }
   return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+/**
+ * Whether a name matches a search the way the official clients send it. Text anywhere in the name matches. Once the
+ * search has a `*`, the whole name must fit it, each `*` standing for any run of characters. Case does not matter, and
+ * `\*` is a literal star. The matching is a single pass over the name for each part of the search, so no search can
+ * make the server slow.
+ */
+export function nameMatches(name: string, query: string): boolean {
+  const parts: string[] = [];
+  const chars = [...query.toLowerCase()];
+  let literal = '';
+  let starred = false;
+  for (let i = 0; i < chars.length; i += 1) {
+    const char = chars[i];
+    if (char === '\\' && (chars[i + 1] === '\\' || chars[i + 1] === '*')) {
+      literal += chars[i + 1];
+      i += 1;
+    } else if (char === '*') {
+      starred = true;
+      parts.push(literal);
+      literal = '';
+    } else {
+      literal += char;
+    }
+  }
+  parts.push(literal);
+
+  const text = name.toLowerCase();
+  if (!starred) return text.includes(literal);
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (text.length < first.length + last.length || !text.startsWith(first) || !text.endsWith(last)) return false;
+  // The parts between the stars come in order, in the part of the name that the first and last parts leave.
+  const end = text.length - last.length;
+  let position = first.length;
+  for (const part of parts.slice(1, -1)) {
+    const found = text.indexOf(part, position);
+    if (found === -1 || found + part.length > end) return false;
+    position = found + part.length;
+  }
+  return true;
 }
 
 function pageOf(req: Request): { cursor: number; limit: number } {
@@ -94,13 +135,7 @@ function dueArg(body: Record<string, unknown>, viewer: UserRow): Record<string, 
   }
   const words = typeof body.due_string === 'string' ? body.due_string.trim() : '';
   if (!words) return due;
-  // A repeat rule is kept as written; anything else is read as a day, from the viewer's today.
-  if (ruleFromString(words) && /\b(every|tous les|chaque|tout les)\b/i.test(words)) {
-    return { ...due, string: words, is_recurring: true };
-  }
-  const reading = readNaturalDate(words, new Date(`${todayIn(viewer.timezone)}T12:00:00`), { locale: viewer.lang === 'fr' ? 'fr' : 'en' });
-  if (!reading) throw ApiFailure.badRequest(`“${words}” is not a date the server can read.`, 'INVALID_DATE');
-  return { ...due, date: reading.date, string: words };
+  return { ...due, ...dueFromWords(words, viewer) };
 }
 
 function noteCounts(db: Db, ids: string[]): Map<string, number> {
@@ -288,6 +323,19 @@ export function registerRest(router: Router, db: Db): void {
     const body = bodyOf(req);
     applyDirect(db, viewer, 'project_move_to_personal', { project_id: body.project_id });
     res.json({ project: projectOutFor(db, viewer, String(body.project_id)) });
+  });
+
+  // Find a project by part of its name, among the active projects the person can see. Before `:id`, which would take “search” for an id.
+  router.add('GET', '/api/v1/projects/search', 'bearer', (req, res) => {
+    const viewer = viewerOf(req);
+    const query = req.query.get('query') ?? '';
+    const { cursor, limit } = pageOf(req);
+    const rows = (db.prepare(`${PROJECT_SELECT} WHERE p.is_deleted = 0 AND p.is_archived = 0 ORDER BY m.child_order`)
+      .all({ viewer: viewer.id }) as ProjectRow[]).filter((row) => nameMatches(row.name, query));
+    res.json({
+      results: rows.slice(cursor, cursor + limit).map(projectShape),
+      next_cursor: rows.length > cursor + limit ? String(cursor + limit) : null,
+    });
   });
 
   router.add('GET', '/api/v1/projects/:id', 'bearer', (req, res) => {

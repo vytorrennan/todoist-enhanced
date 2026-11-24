@@ -23,7 +23,14 @@ import {
 export const RESOURCE_TYPES = [
   'items', 'projects', 'sections', 'labels', 'notes', 'project_notes', 'reminders', 'user', 'collaborators',
   'workspaces', 'live_notifications', 'filters', 'completed_info', 'collaborator_states', 'folders', 'user_settings',
+  'user_plan_limits',
 ] as const;
+
+/**
+ * This server enforces no plan limits. The official clients refuse a new personal project once the count reaches
+ * `maxProjects`, so it reports a ceiling far above what one person keeps.
+ */
+export const PERSONAL_PROJECT_CEILING = 1000;
 
 export interface ReadResult {
   full_sync: boolean;
@@ -61,7 +68,8 @@ function noteCounts(db: Db, itemIds: string[]): Map<string, number> {
 }
 
 export function readFor(db: Db, viewer: UserRow, since: number | null, types: readonly string[] | null): ReadResult {
-  const wanted = new Set(types && types.length ? types : RESOURCE_TYPES);
+  // A request that names no resource types gets none back: a write answers with its results only, as the Sync API does.
+  const wanted = new Set(types === null ? [] : types.length ? types : RESOURCE_TYPES);
   // A read is full when there is no token, or the token predates a change to what this person can see.
   const full = since === null || since < viewer.access_seq;
   const s = full ? 0 : since;
@@ -214,6 +222,10 @@ export function readFor(db: Db, viewer: UserRow, since: number | null, types: re
 
   if (want('user_settings')) {
     data.user_settings = { reset_recurring_subtasks: bool(viewer.reset_recurring_subtasks) };
+  }
+
+  if (want('user_plan_limits')) {
+    data.user_plan_limits = { current: { maxProjects: PERSONAL_PROJECT_CEILING }, next: null };
   }
 
   return { full_sync: full, sync_token: `${viewer.id}:${currentSeq(db)}`, data };
