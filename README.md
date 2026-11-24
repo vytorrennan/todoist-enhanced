@@ -19,8 +19,10 @@ _Enhanced for Todoist is an independent project. It is not created by, affiliate
 - […and the basics you expect from a task app](#and-the-basics-you-expect-from-a-task-app)
 - [Screenshots](#screenshots)
 - [How to use it](#how-to-use-it)
+- [The server](#the-server)
 - [Links](#links)
 - [Building it](#building-it)
+- [Limitations](#limitations)
 - [Disclaimers](#disclaimers)
 
 ---
@@ -151,6 +153,33 @@ Passwords are stored as scrypt hashes. A sign-in is a session token that lasts 3
 
 On the device, the app keeps the session token and an offline copy of your tasks in the browser's IndexedDB, so it works without a connection and sends its changes when the connection returns.
 
+## The server
+
+Your data lives on a small Node server with a SQLite file, and the server is what lets the app work across devices. What it does:
+
+- **Accounts:** scrypt password hashes, bearer sessions that last 30 days and are revoked on sign-out, and a lockout after repeated wrong passwords. `TDE_SIGNUP=closed` stops anyone creating an account.
+- **Sync:** the app's sync endpoint takes commands and returns what changed since a token. Commands are idempotent, tokens are bound to the account, and a write sent for another account is refused.
+- **Sharing:** projects and workspaces are shared by invitation, with owner, admin, member and guest roles. Folders group projects.
+- **Reminders, activity and insights:** reminders are stored; the activity log, insights and productivity figures are computed from your tasks. Projects can be exported and imported as CSV.
+- **REST API v1:** the routes the official Todoist SDK and the official Todoist MCP call, for tasks, projects, sections, labels, comments, filters, folders, workspaces, reminders, activity, templates, productivity and insights.
+
+### Working with the official Todoist MCP
+
+The official [`@todoist/mcp`](https://www.npmjs.com/package/@todoist/mcp) (17.3.8) runs against this server when `TODOIST_BASE_URL` points to it. The suite in `mcp-e2e/` runs that MCP over its stdio transport, the way an assistant does, and covers:
+
+- **Tasks:** create, read, update, complete and delete, and due phrases such as `2030-01-15` and `every monday`, read as the app reads them.
+- **Projects:** create, nest, rename and delete; find by name, with `*` for a wildcard and `\*` for a literal asterisk.
+- **Sections:** create, list, find by name within a project, and delete.
+- **Labels:** list personal labels with their settings, page through them, and find them by name. Shared labels are the names on active tasks in a shared project; personal names are included unless the caller sends `omit_personal=true`.
+- **Filters:** save, find, rename and delete, and day filters with `due:` and `date:`.
+- **Accounts and errors:** sign-in is required, a signed-out token stops working, one person's data never appears in another's lists, and missing fields, unknown tools, partial batches and double completions are reported as failures.
+
+### Backups and restores
+
+Back up with SQLite's own `.backup` while the server runs, then copy the uploaded files. The database goes first, so every file it refers to is in the copy. Restoring means stopping the server, removing the old `-wal` and `-shm` files, and putting the database and the files back. The commands are in [docs/deploying.md](docs/deploying.md#backups).
+
+The backup suite runs that procedure while the server keeps writing, then starts a fresh server on the copy. It checks the database's integrity; that every acknowledged task, account, comment and uploaded file came back; that accounts stay separate; and that the restored server still reads and writes through the official MCP.
+
 ## How it is built
 
 - `server/`: a Node HTTP server with SQLite (better-sqlite3). `server/app.ts` lists every endpoint. The sync endpoint (`POST /api/v1/sync`) takes commands and returns what changed since a token, which is how the app keeps its copy current; the REST reads cover history, comments, filters, folders and workspaces.
@@ -162,8 +191,44 @@ On the device, the app keeps the session token and an offline copy of your tasks
     npm test                                        # unit tests of the app and the server
     npm run e2e                                     # the demo journeys in a browser
     npx playwright test -c playwright.server.config.ts   # journeys on the real server, on a new database
+    npm run test:mcp                                # the official MCP and the backup procedure, on the built server (Node 24, sqlite3 installed)
 
 The real-server journeys make every account through the screens, add and complete tasks, go offline and back, share a project between two people, and check the server itself for each result.
+
+CI runs the unit tests, typecheck, lint and builds on Node 22; the official MCP and backup suite on Node 24, because the MCP server needs it; and the browser journeys on pull requests.
+
+## Limitations
+
+These are the known limits and open decisions in the current version.
+
+**Compatibility**
+
+- `get-user-status` is not served. The SDK needs a karma number, and the app hides karma when it is `null`. Karma is not computed, and deciding how to handle it is the open question.
+- The official MCP suite does not cover comments, reminders, folders, workspaces, or most label and section writes.
+- The server reports a ceiling of 1,000 personal projects, so the official clients accept new ones. The server does not enforce that limit itself.
+- A sync request that names no resource types gets no resource data. The app always names its types.
+- `GET /api/v1/sections` still lists archived sections, while the section search does not, so the two disagree.
+
+**Data and operations**
+
+- A restore revives the sessions in the backup, including any signed out after it, until they expire.
+- Label and section search pages sort every match on each page, because no index covers their order. Measured: about 3 ms a page with 1,000 candidates per table and 33 ms with 10,000. Indexes and keyset paging are planned only if larger measurements justify them.
+- One process and one database file. This suits one person or a small team; it is not a horizontally scaled service.
+- Email addresses are not verified, so an invitation reaches whoever registers the address. Close sign-up on any instance that strangers can reach.
+
+**Features**
+
+- Reminders are stored, not delivered. Location reminders are served by REST, but the sync read does not include them.
+- The activity log is not pruned.
+- Attachments cannot be viewed through the SDK's `viewAttachment`, which fetches only from Todoist's own hosts.
+- Templates are CSV import and export only.
+- Health is a fixed rule over overdue and open tasks, not Todoist's analysis.
+- CSV priority uses the API's values, where 4 is the highest.
+- A guest who owns a project may take it out of its workspace; the folder stays with the workspace. This is the owner's decision.
+- A reorder can be refused for a sibling that another device has removed, until the next sync corrects the order.
+- Name search ignores case and also folds the Greek final sigma and the German sharp s. It is not full Unicode case folding.
+
+## Links
 
 ## Links
 
