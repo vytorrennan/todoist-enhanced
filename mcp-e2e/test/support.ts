@@ -130,6 +130,34 @@ export function command(type: string, args: Record<string, unknown>, tempId?: st
   return { type, uuid: randomUUID(), args, ...(tempId ? { temp_id: tempId } : {}) };
 }
 
+/** A Sync API request for resources, the way the app asks for them. Returns the reply's body. */
+export async function readResources(base: string, token: string, types: string[]): Promise<any> {
+  const form = new URLSearchParams({ sync_token: '*', resource_types: JSON.stringify(types) });
+  const reply = await fetch(`${base}/api/v1/sync`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  });
+  if (!reply.ok) throw new Error(`Reading ${types.join(', ')} failed: ${reply.status}`);
+  return reply.json();
+}
+
+const allSucceeded = (body: any): boolean => {
+  const statuses = Object.values(body?.sync_status ?? {});
+  return statuses.length > 0 && statuses.every((status) => status === 'ok');
+};
+
+/** Shares a project with a person, who then accepts the invitation, as the app does: until they accept, it is not theirs to see. */
+export async function shareAndAccept(base: string, owner: Account, guest: Account, projectId: string): Promise<void> {
+  const shared = await sync(base, owner.token, [command('share_project', { project_id: projectId, email: guest.email, role: 'READ_WRITE' })]);
+  if (!allSucceeded(shared.body)) throw new Error(`Sharing failed: ${JSON.stringify(shared.body)}`);
+  const notices = (await readResources(base, guest.token, ['live_notifications'])).live_notifications as Array<Record<string, unknown>>;
+  const invite = notices.find((notice) => notice.notification_type === 'share_invitation_sent' && !notice.answered);
+  if (!invite) throw new Error('The guest was not sent an invitation');
+  const accepted = await sync(base, guest.token, [command('accept_invitation', { invitation_id: invite.invitation_id, invitation_secret: invite.invitation_secret })]);
+  if (!allSucceeded(accepted.body)) throw new Error(`Accepting failed: ${JSON.stringify(accepted.body)}`);
+}
+
 /** Creates an object through the Sync API and returns its real id. */
 export async function createThrough(base: string, token: string, type: string, args: Record<string, unknown>): Promise<string> {
   const temp = randomUUID();

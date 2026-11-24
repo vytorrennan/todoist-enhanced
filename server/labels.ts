@@ -1,4 +1,4 @@
-import { ApiFailure, type Db, newId, nextSeq } from './db';
+import { ApiFailure, currentSeq, type Db, newId, nextSeq } from './db';
 import { type Args, type Ctx, endOfList, id as idArg, orderKeyArg, orderNumberArg, renumber, resolveId, text, truthy } from './ctx';
 import { checkFilterQuery, runFilter } from './filterQuery';
 import { parseLabels } from './serialize';
@@ -114,6 +114,71 @@ export function updateLabelOrders(ctx: Ctx, args: Args): void {
     .sort(([, a], [, b]) => Number(a) - Number(b))
     .map(([id]) => id);
   renumber(db, 'labels', rows, ordered, () => nextSeq(db));
+}
+
+/**
+ * The key two label spellings share when the official tools call them the same label: accents and case are ignored.
+ * The task filter matches on this key, so it finds every spelling the official tool's own check would accept.
+ */
+export function labelKey(name: string): string {
+  return name.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+/**
+ * Each person's shared label names, kept until the database changes. The official find-labels reads them a page at a
+ * time, so without this each page would scan the same tasks again. The change counter moves on every write the sync
+ * API reports, which is every write these names depend on.
+ */
+const sharedNamesKept = new WeakMap<Db, Map<string, { seq: number; names: string[] }>>();
+const SHARED_NAMES_KEPT = 256;
+
+/**
+ * The shared labels of a person: the label names on active tasks in shared projects this person is in, a project being
+ * shared when more than one person is active in it. Personal labels are listed too, unless `omitPersonal` is set. One
+ * spelling per name, sorted, so every read gives the same list.
+ */
+export function sharedLabelNames(db: Db, viewerId: string, omitPersonal: boolean): string[] {
+  const names = cachedSharedLabelNames(db, viewerId);
+  if (!omitPersonal) return names;
+  const own = new Set((db.prepare('SELECT name FROM labels WHERE user_id = ? AND is_deleted = 0').all(viewerId) as Array<{ name: string }>)
+    .map((row) => labelKey(row.name)));
+  return names.filter((name) => !own.has(labelKey(name)));
+}
+
+/** The shared label names, from the cache when nothing has changed since they were computed. */
+function cachedSharedLabelNames(db: Db, viewerId: string): string[] {
+  const seq = currentSeq(db);
+  let kept = sharedNamesKept.get(db);
+  if (!kept) { kept = new Map(); sharedNamesKept.set(db, kept); }
+  const hit = kept.get(viewerId);
+  if (hit && hit.seq === seq) return hit.names;
+  const names = computeSharedLabelNames(db, viewerId);
+  kept.delete(viewerId);
+  kept.set(viewerId, { seq, names });
+  if (kept.size > SHARED_NAMES_KEPT) kept.delete(kept.keys().next().value as string);
+  return names;
+}
+
+/** The label names on the active tasks of the shared projects this person is in: one spelling per name, sorted. */
+function computeSharedLabelNames(db: Db, viewerId: string): string[] {
+  // Starts from this person's own memberships, so it reads only the projects they are in, never every membership.
+  const rows = db.prepare(`SELECT i.labels FROM items i
+      WHERE i.is_deleted = 0 AND i.checked = 0 AND i.labels != '[]'
+        AND i.project_id IN (
+          SELECT m.project_id FROM project_members m JOIN projects p ON p.id = m.project_id AND p.is_deleted = 0
+          WHERE m.user_id = @viewer AND m.state = 'active'
+            AND EXISTS (SELECT 1 FROM project_members o WHERE o.project_id = m.project_id AND o.user_id != @viewer AND o.state = 'active'))`)
+    .all({ viewer: viewerId }) as Array<{ labels: string }>;
+  const spellings = new Map<string, string>();
+  for (const row of rows) {
+    for (const name of parseLabels(row.labels)) {
+      if (!name) continue;
+      const key = labelKey(name);
+      const kept = spellings.get(key);
+      if (kept === undefined || name < kept) spellings.set(key, name);
+    }
+  }
+  return [...spellings.keys()].sort().map((key) => spellings.get(key) ?? '');
 }
 
 /** Filters ------------------------------------------------------------------ */

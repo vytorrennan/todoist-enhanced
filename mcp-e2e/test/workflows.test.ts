@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
 import { getDefaultEnvironment } from '@modelcontextprotocol/client/stdio';
-import { type Account, type Assistant, call, connectAssistant, MCP_ENTRY, type Reply, register, removeDir, RunningServer, scratchDir, startServer, sync } from './support.js';
+import { type Account, type Assistant, call, connectAssistant, MCP_ENTRY, type Reply, register, removeDir, RunningServer, scratchDir, shareAndAccept, startServer, sync } from './support.js';
 
 /*
  * The official Todoist MCP server, run as an assistant runs it, against this server through TODOIST_BASE_URL.
@@ -338,6 +338,166 @@ describe('error handling', () => {
   });
 });
 
+describe('finding labels and sections by name', () => {
+  let owner: Account;
+  let guest: Account;
+  let stranger: Account;
+  let ownerAssistant: Assistant;
+  let guestAssistant: Assistant;
+  let strangerAssistant: Assistant;
+
+  beforeAll(async () => {
+    owner = await register(server.base, 'Label owner');
+    guest = await register(server.base, 'Label guest');
+    stranger = await register(server.base, 'Label stranger');
+    ownerAssistant = await connectAssistant(server.base, owner.token);
+    guestAssistant = await connectAssistant(server.base, guest.token);
+    strangerAssistant = await connectAssistant(server.base, stranger.token);
+  }, 60_000);
+
+  afterAll(async () => {
+    await ownerAssistant?.close();
+    await guestAssistant?.close();
+    await strangerAssistant?.close();
+  });
+
+  // The tool creates a batch of labels or sections at once, so their order in the list is not fixed: names are compared sorted.
+  const labelNames = (reply: Reply): string[] => reply.data.labels.map((label: { name: string }) => label.name).sort();
+
+  it('lists the personal labels with their ids and settings', async () => {
+    const made = createdIds(await call(ownerAssistant, 'add-labels', {
+      labels: [{ name: 'Errands', color: 'blue' }, { name: 'Waiting', isFavorite: true }],
+    }), 'labels');
+    const reply = await call(ownerAssistant, 'find-labels', {});
+    expect(reply.isError, reply.text).toBe(false);
+    expect(reply.data.labels.map((label: { id: string }) => label.id)).toEqual(expect.arrayContaining(made));
+    expect(reply.data.labels.find((label: { id: string }) => label.id === made[1])).toMatchObject({ name: 'Waiting', isFavorite: true });
+    expect(reply.data.labels.find((label: { id: string }) => label.id === made[0])).toMatchObject({ name: 'Errands', color: 'blue' });
+    expect(reply.data.totalCount).toBe(reply.data.labels.length);
+    expect(reply.data.hasMore).toBe(false);
+  });
+
+  it('pages the personal labels with the limit and the cursor the tool gives, and returns each once', async () => {
+    createdIds(await call(ownerAssistant, 'add-labels', { labels: [{ name: 'Page A' }, { name: 'Page B' }, { name: 'Page C' }] }), 'labels');
+    const everything = (await call(ownerAssistant, 'find-labels', {})).data.labels.map((label: { id: string }) => label.id);
+    expect(everything.length).toBeGreaterThan(2);
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const page = await call(ownerAssistant, 'find-labels', cursor === undefined ? { limit: 2 } : { limit: 2, cursor });
+      expect(page.isError, page.text).toBe(false);
+      expect(page.data.labels.length).toBeLessThanOrEqual(2);
+      seen.push(...page.data.labels.map((label: { id: string }) => label.id));
+      cursor = page.data.hasMore ? page.data.nextCursor : undefined;
+      pages += 1;
+    } while (cursor !== undefined && pages <= everything.length);
+    expect(seen).toEqual(everything);
+    expect(pages).toBe(Math.ceil(everything.length / 2));
+  });
+
+  it('finds labels by part of their name, by a wildcard, or by a literal asterisk, and leaves out the rest', async () => {
+    createdIds(await call(ownerAssistant, 'add-labels', { labels: [{ name: 'Homework' }, { name: 'Work projects' }, { name: 'Rated *' }] }), 'labels');
+    const names = async (searchText: string, extra: Record<string, unknown> = {}): Promise<string[]> => {
+      const reply = await call(ownerAssistant, 'find-labels', { searchText, ...extra });
+      expect(reply.isError, reply.text).toBe(false);
+      return labelNames(reply);
+    };
+    expect(await names('work')).toEqual(['Homework', 'Work projects']);
+    expect(await names('WORK*')).toEqual(['Work projects']);
+    expect(await names('Rated \\*')).toEqual(['Rated *']);
+    expect(await names('no such label')).toEqual([]);
+    // The tool says a cursor is ignored while searching; the search still returns every match.
+    expect(await names('work', { cursor: '1' })).toEqual(['Homework', 'Work projects']);
+  });
+
+  it('leaves out a label that was deleted', async () => {
+    const [temporary] = createdIds(await call(ownerAssistant, 'add-labels', { labels: [{ name: 'Temporary' }] }), 'labels');
+    expect(labelNames(await call(ownerAssistant, 'find-labels', { searchText: 'temporary' }))).toEqual(['Temporary']);
+    expect((await call(ownerAssistant, 'delete-object', { type: 'label', id: temporary })).data.success).toBe(true);
+    expect(labelNames(await call(ownerAssistant, 'find-labels', { searchText: 'temporary' }))).toEqual([]);
+  });
+
+  it('lists the labels on the tasks of a shared project to everyone in it, and to no one else', async () => {
+    const project = createdIds(await call(ownerAssistant, 'add-projects', { projects: [{ name: 'Shared with guest' }] }), 'projects')[0];
+    createdIds(await call(ownerAssistant, 'add-tasks', {
+      tasks: [{ content: 'Shared task', projectId: project, labels: ['Client', 'Waiting'] }],
+    }), 'tasks');
+    await shareAndAccept(server.base, owner, guest, project);
+    createdIds(await call(guestAssistant, 'add-labels', { labels: [{ name: 'WAITING' }] }), 'labels');
+
+    const seen = await call(guestAssistant, 'find-labels', {});
+    expect(seen.isError, seen.text).toBe(false);
+    expect(seen.data.sharedLabels).toEqual(['Client', 'Waiting']);
+    expect(labelNames(seen)).toEqual(['WAITING']);
+
+    expect((await call(ownerAssistant, 'find-labels', {})).data.sharedLabels).toEqual(['Client', 'Waiting']);
+    const outsider = await call(strangerAssistant, 'find-labels', {});
+    expect(outsider.data.sharedLabels).toEqual([]);
+    expect(outsider.data.labels).toEqual([]);
+    expect(JSON.stringify(outsider.data)).not.toContain('Client');
+  });
+
+  it('finds a task by a label whatever the case or accents of its spelling, in a project shared with a person', async () => {
+    const project = createdIds(await call(ownerAssistant, 'add-projects', { projects: [{ name: 'Spellings shared' }] }), 'projects')[0];
+    createdIds(await call(ownerAssistant, 'add-tasks', {
+      tasks: [
+        { content: 'Upper spelling', projectId: project, labels: ['Client'] },
+        { content: 'Lower spelling', projectId: project, labels: ['client'] },
+        { content: 'Accented spelling', projectId: project, labels: ['Café'] },
+      ],
+    }), 'tasks');
+    await shareAndAccept(server.base, owner, guest, project);
+
+    const lower = await call(guestAssistant, 'find-tasks', { projectId: project, labels: ['client'] });
+    expect(lower.isError, lower.text).toBe(false);
+    expect(lower.data.tasks.map((task: { content: string }) => task.content).sort()).toEqual(['Lower spelling', 'Upper spelling']);
+
+    const accented = await call(guestAssistant, 'find-tasks', { projectId: project, labels: ['cafe'] });
+    expect(accented.isError, accented.text).toBe(false);
+    expect(accented.data.tasks.map((task: { content: string }) => task.content)).toEqual(['Accented spelling']);
+  });
+
+  it('refuses a label search whose limit is out of range', async () => {
+    expect((await call(ownerAssistant, 'find-labels', { limit: 0 })).isError).toBe(true);
+    expect((await call(ownerAssistant, 'find-labels', { limit: 201 })).isError).toBe(true);
+  });
+
+  it('finds sections by part of their name, a wildcard, or a literal asterisk, within the project named', async () => {
+    const [gap, other] = createdIds(await call(ownerAssistant, 'add-projects', { projects: [{ name: 'Gap sections' }, { name: 'Other sections' }] }), 'projects');
+    createdIds(await call(ownerAssistant, 'add-sections', {
+      sections: [
+        { name: 'Gap section', projectId: gap },
+        { name: 'Plain section', projectId: gap },
+        { name: 'Rated *', projectId: gap },
+        { name: 'Gap elsewhere', projectId: other },
+      ],
+    }), 'sections');
+    const names = async (projectId: string, searchText: string): Promise<string[]> => {
+      const reply = await call(ownerAssistant, 'find-sections', { projectId, searchText });
+      expect(reply.isError, reply.text).toBe(false);
+      return reply.data.sections.map((section: { name: string }) => section.name).sort();
+    };
+    expect(await names(gap, 'gap')).toEqual(['Gap section']);
+    expect(await names(gap, 'SECTION')).toEqual(['Gap section', 'Plain section']);
+    expect(await names(gap, 'gap*')).toEqual(['Gap section']);
+    expect(await names(gap, 'Rated \\*')).toEqual(['Rated *']);
+    expect(await names(gap, 'nothing like this')).toEqual([]);
+    expect(await names('inbox', 'gap')).toEqual([]);
+  });
+
+  it('finds no sections of another person’s project, and refuses a section search with no project', async () => {
+    const [project] = createdIds(await call(ownerAssistant, 'add-projects', { projects: [{ name: 'Owner sections' }] }), 'projects');
+    createdIds(await call(ownerAssistant, 'add-sections', { sections: [{ name: 'Owner gap', projectId: project }] }), 'sections');
+    const outsider = await call(strangerAssistant, 'find-sections', { projectId: project, searchText: 'owner gap' });
+    expect(outsider.isError, outsider.text).toBe(false);
+    expect(outsider.data.sections).toEqual([]);
+    expect(outsider.data.totalCount).toBe(0);
+    expect((await call(ownerAssistant, 'find-sections', { searchText: 'gap' })).isError).toBe(true);
+  });
+});
+
 describe('known gaps', () => {
   // Recorded, not hidden. Each test fails today, so vitest expects it to fail and the suite stays green. Once the gap is
   // closed, the test passes, vitest reports that as an error, and the marker comes off.
@@ -346,17 +506,4 @@ describe('known gaps', () => {
     expect(reply.isError, reply.text).toBe(false);
   });
 
-  // The label and section searches are outside the workflows above. Found by running every read-only tool against an
-  // account with data: this server does not answer these calls yet.
-  it.fails('lists the labels, as find-labels does', async () => {
-    const reply = await call(assistant, 'find-labels', {});
-    expect(reply.isError, reply.text).toBe(false);
-  });
-
-  it.fails('finds sections by name, as find-sections does with searchText', async () => {
-    const project = createdIds(await call(assistant, 'add-projects', { projects: [{ name: 'Gap sections' }] }), 'projects')[0];
-    createdIds(await call(assistant, 'add-sections', { sections: [{ name: 'Gap section', projectId: project }] }), 'sections');
-    const reply = await call(assistant, 'find-sections', { projectId: project, searchText: 'Gap' });
-    expect(reply.isError, reply.text).toBe(false);
-  });
 });
