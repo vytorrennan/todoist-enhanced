@@ -1,7 +1,6 @@
 import { PrivacyInformation } from '@/components/PrivacyInformation';
 import { useState } from 'react';
 import { Icon } from '@/components/Icon';
-import { MacAppLine } from '@/components/MacApp';
 import { WorkspacePreview } from '@/components/WorkspacePreview';
 import { Overlay } from '@/components/overlays/Overlay';
 import { useT } from '@/hooks/useT';
@@ -179,7 +178,6 @@ export function ConnectView() {
             <span className="demo-long">{t('connect.demoInstead')}</span>
             <span className="demo-short">{t('connect.demoShort')}</span>
           </button>
-          <MacAppLine />
         </div>
 
         {/* A phone has room for one line; the rest is a sheet away (#292). */}

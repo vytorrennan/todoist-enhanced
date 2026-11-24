@@ -120,13 +120,14 @@ test.describe('setup and settings (v2)', () => {
     await expect(page.locator('.setup-name')).toHaveText('Robin');
   });
 
-  test('the support card is always there and cannot be closed', async ({ demo: page }) => {
+  test('the donation link is in About and names the original developer', async ({ demo: page }) => {
     await page.route('https://github.com/**', (route) => route.fulfill({ status: 204 }));
     await go(page, '#/settings');
-    const card = page.locator('.coffee-callout');
-    await expect(card).toBeVisible();
-    await expect(card.getByRole('button')).toHaveCount(0);
-    expect((await card.getByRole('link', { name: 'Buy me a coffee' }).boundingBox())!.height).toBeGreaterThanOrEqual(46);
+    const link = page.locator('#about').getByRole('link', { name: 'Support the original developer' });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', 'https://buymeacoffee.com/julesbertolino');
+    await expect(page.locator('#about')).toContainText('Jules-Valentin Bertolino');
+    await expect(page.locator('.coffee-callout')).toHaveCount(0);
   });
 
   test('Week starts on is stated, with no link and nothing to change', async ({ demo: page }) => {

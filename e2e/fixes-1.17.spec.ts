@@ -297,7 +297,8 @@ bare('#128 a crash while drawing shows a message and a Reload button, not a whit
   const alert = page.getByRole('alert');
   await expect(alert).toContainText('Something went wrong');
   await expect(alert.getByRole('button', { name: 'Reload' })).toBeVisible();
-  await expect(alert.getByRole('link', { name: 'Tell us what happened' })).toBeVisible();
+  // This fork offers no feedback form, so the crash screen has no link.
+  await expect(alert.getByRole('link')).toHaveCount(0);
 });
 
 test('#136 a toast is announced: it lands in a live region already in the page', async ({ demo: page }) => {

@@ -108,8 +108,7 @@ test.describe('bottom sheets (#293)', () => {
     const badge = (await sheet.locator('.whatsnew-badge').first().boundingBox())!;
     const title = (await sheet.locator('.whatsnew-title').first().boundingBox())!;
     expect(badge.y + badge.height).toBeLessThanOrEqual(title.y + 1);
-    await expect(sheet.locator('.whatsnew-foot .coffee-short')).toBeVisible();
-    await expect(sheet.locator('.whatsnew-foot .coffee-long')).toBeHidden();
+    await expect(sheet.locator('.whatsnew-foot a[href*="buymeacoffee"]')).toHaveCount(0);
   });
 
   test('Search is a page of its own with Cancel, and no keyboard hints', async ({ demo: page }) => {

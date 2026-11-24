@@ -115,9 +115,6 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // The share card is fetched by link scrapers, never by the app. There
-        // is no reason to spend a fifth of the offline cache on it.
-        globIgnores: ['og-image.png'],
         // The new worker waits for the page's go-ahead (SKIP_WAITING from
         // registerSW), then claims every tab, so no tab runs on two builds.
         clientsClaim: true,

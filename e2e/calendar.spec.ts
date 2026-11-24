@@ -362,7 +362,7 @@ test('full changelog keeps its history visible and current footer actions', asyn
   await expect(dialog.locator('[data-changelog-preview="assign"]')).toHaveCount(1);
   await expect(dialog.locator('[data-changelog-preview="subtasks"]')).toHaveCount(1);
   await expect(dialog.locator('details')).toHaveCount(0);
-  await expect(dialog.getByRole('link', { name: 'Buy me a coffee' })).toBeVisible();
+  await expect(dialog.locator('a[href*="buymeacoffee"]')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Got it' })).toBeVisible();
   await page.screenshot({ path: '../../outputs/changelog-complet-2.10.0.png', fullPage: true });
   await dialog.locator('.whatsnew-body').evaluate((el) => { el.scrollTop = 370; });
@@ -415,7 +415,7 @@ test('update window links to full changelog and keeps actions over a bounded blu
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('enhanced:changelog', { detail: { versions: ['2.10.0'] } })));
   const updated = page.getByRole('dialog', { name: 'What’s new since your last visit', exact: true });
   await expect(updated.locator('.whatsnew-feed')).toHaveCount(1);
-  await expect(updated.getByRole('link', { name: 'Buy me a coffee' })).toBeVisible();
+  await expect(updated.locator('a[href*="buymeacoffee"]')).toHaveCount(0);
   await expect(updated.getByRole('button', { name: 'Got it', exact: true })).toBeVisible();
   await page.screenshot({ path: '../../outputs/changelog-since-last-visit.png', fullPage: true, animations: 'disabled' });
   await updated.getByRole('button', { name: 'See changelog', exact: true }).click();
@@ -439,7 +439,7 @@ test('update window links to full changelog and keeps actions over a bounded blu
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('enhanced:changelog', { detail: { versions: ['2.10.0'] } })));
   await expect(updated.getByRole('button', { name: 'See changelog', exact: true })).toBeVisible();
   await expect(updated.getByRole('button', { name: 'Got it', exact: true })).toBeVisible();
-  await expect(updated.getByRole('link', { name: 'Buy me a coffee' })).toBeVisible();
+  await expect(updated.locator('a[href*="buymeacoffee"]')).toHaveCount(0);
   await page.screenshot({ path: '../../outputs/changelog-since-last-visit-mobile.png', fullPage: true, animations: 'disabled' });
 });
 
