@@ -41,14 +41,11 @@ function makeRandom(seed: number) {
 /** The demo user's picture, and the workspace's logo. */
 const PERSON_PICTURE = 'https://images.unsplash.com/photo-1639747280804-dd2d6b3d88ac?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D';
 const WORKSPACE_LOGO = 'https://images.unsplash.com/vector-1739896184344-762e89390e65?q=80&w=880&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D';
-/** A teammate who is a real person on purpose: the author's own picture, shipped with the app. */
-const TEAMMATE_PICTURE = '/author.png';
-
 /** The workspace the demo's pro projects live in. */
 export const DEMO_WORKSPACE_ID = 'ws-pro';
 /** The teammate the demo's shared projects and assignments use. */
-export const DEMO_TEAMMATE_ID = 'demo-jules';
-export const DEMO_TEAMMATE_NAME = 'Jules Bertolino';
+export const DEMO_TEAMMATE_ID = 'demo-sam';
+export const DEMO_TEAMMATE_NAME = 'Sam Okafor';
 
 export function buildDemoSnapshot(locale: Locale = 'en', seed = 20260914): Snapshot {
   if (legacy()) return buildLegacyDemoSnapshot(locale, seed);
@@ -134,7 +131,7 @@ export function buildDemoSnapshot(locale: Locale = 'en', seed = 20260914): Snaps
   addSection('s-admin', 'studio', L('Admin and finances', 'Administratif et finances'));
   addSection('s-mkt', 'studio', L('Marketing', 'Marketing'));
   addSection('t-robin', 'team', 'Robin');
-  addSection('t-jules', 'team', 'Jules');
+  addSection('t-sam', 'team', 'Sam');
   addSection('t-maya', 'team', 'Maya');
   addSection('a-brand', 'atelier', L('Brand and scope', 'Marque et cadrage'));
   addSection('a-design', 'atelier', L('Design', 'Design'), L('Two tasks here at most, or nothing moves.', 'Deux tâches maximum ici, sinon plus rien n’avance.'));
@@ -376,7 +373,7 @@ export function buildDemoSnapshot(locale: Locale = 'en', seed = 20260914): Snaps
   });
   addItem({
     content: L('Prepare the Domaine Aurel mockups', 'Préparer les maquettes de Domaine Aurel'),
-    project_id: 'team', section_id: 't-jules', priority: P2, labels: ['est-120'], due: due(day(5)),
+    project_id: 'team', section_id: 't-sam', priority: P2, labels: ['est-120'], due: due(day(5)),
     responsible_uid: DEMO_TEAMMATE_ID,
   });
   addItem({
@@ -505,7 +502,7 @@ export function buildDemoSnapshot(locale: Locale = 'en', seed = 20260914): Snaps
     filters: demoFilterRecords(locale),
     workspaces,
     collaborators: {
-      [DEMO_TEAMMATE_ID]: { id: DEMO_TEAMMATE_ID, email: 'jules@demo.test', full_name: DEMO_TEAMMATE_NAME, image_id: null, avatar_big: TEAMMATE_PICTURE },
+      [DEMO_TEAMMATE_ID]: { id: DEMO_TEAMMATE_ID, email: 'sam@demo.test', full_name: DEMO_TEAMMATE_NAME, image_id: null },
       'demo-maya': { id: 'demo-maya', email: 'maya@demo.test', full_name: 'Maya Chen', image_id: null },
     },
     collaboratorStates: [
@@ -514,7 +511,7 @@ export function buildDemoSnapshot(locale: Locale = 'en', seed = 20260914): Snaps
         { project_id, user_id: DEMO_TEAMMATE_ID, state: 'active' },
         { project_id, user_id: 'demo-maya', state: 'active' },
       ]),
-      /* Jules runs the book club and shares it: the one demo project that can be left (#35). */
+      /* Sam runs the book club and shares it: the one demo project that can be left (#35). */
       { project_id: 'bookclub', user_id: DEMO_TEAMMATE_ID, state: 'active', role: 'CREATOR' },
       { project_id: 'bookclub', user_id: 'demo-user', state: 'active', role: 'READ_WRITE' },
     ],
