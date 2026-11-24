@@ -261,11 +261,10 @@ These are the known limits and open decisions in the current version.
 - A guest who owns a project may take it out of its workspace. The folder stays with the workspace. That is the owner's decision.
 - A reorder can be refused for a sibling that another device has removed, until the next sync corrects the order.
 - Name search ignores case and also folds the Greek final sigma and the German sharp s. It is not full Unicode case folding.
-- The app's feedback and donation links (`src/app-info.ts`) and its social-share metadata (`index.html`) still point to the original project.
 
 ## Acknowledgments and license
 
-This fork is built on **Enhanced for Todoist** by Jules-Valentin Bertolino. The front end, its planning features and its design are that project's work. The original repository is [julesvbertolino/todoist-enhanced](https://github.com/julesvbertolino/todoist-enhanced). Its Mac app is a separate project that has not been tested against this server, so this README does not link to it. `CHANGELOG.md` records the original project's releases up to the version this fork started from.
+This fork is built on **Enhanced for Todoist** by Jules-Valentin Bertolino. The front end, its planning features and its design are that project's work. The original repository is [julesvbertolino/todoist-enhanced](https://github.com/julesvbertolino/todoist-enhanced). Its Mac app is a separate project that has not been tested against this server, so this README does not link to it. The app's About section links to the original project's repository, to the developer's donation page and to the developer's social accounts. Each is labelled as the original developer's. Donations go to the developer, not to this fork. `CHANGELOG.md` records the original project's releases up to the version this fork started from.
 
 Enhanced for Todoist is an independent project. **It is not created by, affiliated with, or supported by Todoist Inc.** It is not an official Todoist product and carries no endorsement. "Todoist" is a trademark of Todoist Inc. The name describes the planning workflow the app was first built around. The app no longer connects to Todoist.
 

@@ -65,7 +65,6 @@ import type { TranslationKey } from './i18n';
 import { useUpdateReady } from './lib/appUpdate';
 import { usePhone } from './hooks/usePhone';
 import { UpdateCard } from './components/UpdateCard';
-import { MacUpdateCard } from './components/MacUpdateCard';
 
 export function App() {
   useLabelRenames();
@@ -421,7 +420,6 @@ export function App() {
       <EstimateConversion target={conversionRequest.target} openRequest={conversionRequest.request} hideTrigger />
       <ShareSheet projectId={shareProject} onClose={() => setShareProject(null)} />
       <PomodoroFocus />
-      <MacUpdateCard enabled={!QUICK_ADD && ready && (connected || demo) && !tourOpen && !walkthroughOpen && !whatsNew} />
       <PomodoroAsk open={askPomodoro && !pomodoroAsked} onClose={() => setAskPomodoro(false)} />
       {walkthroughOpen && <Suspense fallback={null}>
         <Walkthrough

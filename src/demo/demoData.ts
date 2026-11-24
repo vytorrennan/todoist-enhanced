@@ -6,7 +6,6 @@ import type {
 } from '@/domain/types';
 import { emptySnapshot } from '@/domain/types';
 import type { Locale } from '@/i18n';
-import { SITE_URL } from '@/app-info';
 import { demoFilterRecords } from './demoFilters';
 import { buildLegacyDemoCompleted, buildLegacyDemoSnapshot } from './demoData.legacy';
 
@@ -211,7 +210,6 @@ export function buildDemoSnapshot(locale: Locale = 'en', seed = 20260914): Snaps
   });
   addItem({
     content: L('Check out Enhanced for Todoist', 'Découvrir Enhanced for Todoist'),
-    description: `[Enhanced for Todoist](${SITE_URL})`,
     labels: ['thismonth', 'est-10'],
   });
   addItem({ content: L('Pay the parking ticket', 'Payer l’amende de stationnement'), labels: ['est-2'] });
@@ -228,7 +226,7 @@ export function buildDemoSnapshot(locale: Locale = 'en', seed = 20260914): Snaps
   });
   addItem({
     content: L('Daily review', 'Revue du jour'),
-    description: L(`Start the day here: [open the Review](${SITE_URL}/#/review).`, `Commencer la journée ici : [ouvrir la Revue](${SITE_URL}/#/review).`),
+    description: L('Start the day here: open the Review.', 'Commencer la journée ici : ouvrez la Revue.'),
     project_id: 'personal', section_id: 'p-admin', priority: P1, labels: ['est-10'],
     due: due(today, undefined, everyDay),
   });

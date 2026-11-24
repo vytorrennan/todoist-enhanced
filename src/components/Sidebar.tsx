@@ -31,7 +31,6 @@ import { applyUpdate, useUpdateCard, useUpdateReady } from '@/lib/appUpdate';
 import { UpdateCard } from './UpdateCard';
 import { Droppable } from './dnd/Droppable';
 import { ProjectDropRow, ProjectRowSortable } from './dnd/ProjectRowSortable';
-import { COFFEE_URL, FEEDBACK_URL } from '@/app-info';
 import { ProjectMenu } from './ProjectMenu';
 import { FolderMenu } from './FolderMenu';
 import { DraggableTag } from './dnd/DraggableTag';
@@ -586,14 +585,6 @@ export function Sidebar({
             <button onClick={() => { setMenuOpen(false); window.dispatchEvent(new Event('enhanced:changelog')); }}>
               <Icon name="sparkles" />
               {t('nav.whatsNew')}
-            </button>
-            <button onClick={() => { setMenuOpen(false); window.open(FEEDBACK_URL, '_blank', 'noopener,noreferrer'); }}>
-              <Icon name="bug" />
-              {t('nav.feedback')}
-            </button>
-            <button onClick={() => window.open(COFFEE_URL, '_blank', 'noopener,noreferrer')}>
-              <Icon name="coffee" />
-              {t('nav.coffee')}
             </button>
             <hr />
             <button className="danger" onClick={() => { setMenuOpen(false); void disconnect(); }}>

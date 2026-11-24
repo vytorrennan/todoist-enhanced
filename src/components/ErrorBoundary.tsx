@@ -1,12 +1,11 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { FEEDBACK_URL } from '@/app-info';
 
 /**
  * What the person sees when the page itself crashes (#128).
  *
  * Without a boundary an exception while drawing blanks the whole page white,
  * with no message and no way to say what happened. This says that something
- * broke, offers the one thing that usually fixes it, and links the bug form.
+ * broke, offers the one thing that usually fixes it.
  *
  * The words are written here, in both languages, rather than looked up: the
  * translation hook may be exactly what failed. The language is the one the page
@@ -17,13 +16,11 @@ const WORDS = {
     title: 'Something went wrong',
     body: 'The page ran into a problem and could not carry on. Reloading usually fixes it.',
     reload: 'Reload',
-    report: 'Tell us what happened',
   },
   fr: {
     title: "Quelque chose s'est mal passé",
     body: "La page a rencontré un problème et n'a pas pu continuer. La recharger le règle en général.",
     reload: 'Recharger',
-    report: 'Nous dire ce qui s\'est passé',
   },
 } as const;
 
@@ -52,9 +49,6 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
           <button className="btn primary lg connect-submit" onClick={() => window.location.reload()}>
             {words.reload}
           </button>
-          <p className="connect-privacy">
-            <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">{words.report}</a>
-          </p>
         </div>
       </div>
     );

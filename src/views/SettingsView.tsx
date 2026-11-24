@@ -1,7 +1,7 @@
 import { useSafeDisconnect } from '@/hooks/useSafeDisconnect';
 import { useDataSnapshot } from '@/hooks/useDataSnapshot';
 import { PrivacyInformation } from '@/components/PrivacyInformation';
-import { MacAppCard } from '@/components/MacApp';
+import { DesktopQuickAddShortcut } from '@/components/QuickAddShortcut';
 import { EstimateConversion } from '@/components/overlays/EstimateConversion';
 import { canStoreDurations } from '@/domain/estimates';
 import { useEffect, useState } from 'react';
@@ -23,7 +23,7 @@ import { FALLBACK_HOME, HOME_VIEWS, type HomeView } from '@/store/prefs';
 import { DEFAULT_MONTH_LABEL, DEFAULT_WEEK_LABEL } from '@/domain/types';
 import { DUST_MONTHS, isDustMonths } from '@/domain/views';
 import type { Locale, TranslationKey } from '@/i18n';
-import { APP_NAME, AUTHOR, AUTHOR_AVATAR_URL, AUTHOR_GITHUB_URL, COFFEE_URL, GITHUB_URL, LINKEDIN_URL, VERSION, X_URL } from '@/app-info';
+import { APP_NAME, AUTHOR, AUTHOR_GITHUB_URL, COFFEE_URL, GITHUB_URL, LINKEDIN_URL, VERSION, X_URL } from '@/app-info';
 import { karmaStanding } from '@/domain/karma';
 import { PomodoroDisplayChoice } from '@/components/PomodoroDisplayChoice';
 import { projectTree } from '@/store/selectors';
@@ -171,20 +171,6 @@ export function SettingsView() {
                 </div>
               )}
             </div>
-
-            {/* Always there, and not dismissible: it is the one way the project
-                is paid for. */}
-            <aside className="setfcard coffee-callout">
-              <img className="coffee-callout-avatar" src={AUTHOR_AVATAR_URL} alt="Jules-Valentin Bertolino" width={96} height={96} decoding="async" />
-              <div>
-                <strong>{t('settings.coffeeCalloutTitle')}</strong>
-                <span>{t('settings.coffeeCalloutBody')}</span>
-              </div>
-              <a className="btn coffee-btn" href={COFFEE_URL} target="_blank" rel="noreferrer noopener">
-                <Icon name="coffee" size="sm" />
-                {t('settings.coffeeCalloutAction')}
-              </a>
-            </aside>
           </section>
 
           {/* ---------------------------------------------------- General */}
@@ -557,7 +543,7 @@ export function SettingsView() {
               </div>
             </div>
 
-            <MacAppCard />
+            <DesktopQuickAddShortcut />
 
             <Row title={t('settings.whatsNew')} hint={t('settings.whatsNewHint')}>
               <Switch checked={prefs.whatsNew} onChange={() => setPrefs({ whatsNew: !prefs.whatsNew })} label={t('settings.whatsNew')} />
@@ -600,6 +586,7 @@ export function SettingsView() {
                 @julesvbertolino
               </a>
             </div>
+            <p className="setlegal">{t('settings.supportNote')}</p>
             <p className="setlegal">
               {t('connect.legal', { author: AUTHOR })}
             </p>
