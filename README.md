@@ -101,7 +101,9 @@ Keep the token secret. Anyone who has it can act as you. Signing out revokes it.
 
     TODOIST_BASE_URL=http://127.0.0.1:8787 \
     TODOIST_API_KEY="YOUR_SERVER_TOKEN" \
-    npx -p @todoist/mcp todoist-mcp
+    npx -y -p @todoist/mcp@17.3.8 todoist-mcp
+
+The version is pinned because the compatibility described here was tested against 17.3.8. Without the pin, `npx` may fetch a newer release, and that release is not covered by these tests.
 
 - `TODOIST_API_KEY` is the token from step 1.
 - `TODOIST_BASE_URL` is the server's address alone. Do not add `/api/v1`. The MCP adds it.
