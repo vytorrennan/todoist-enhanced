@@ -5,7 +5,7 @@ import type { Request, Response, Router } from './http';
 import { applyDirect } from './commands';
 import { requireWorkspace, visibleSql } from './access';
 import { type Args, makeCtx } from './ctx';
-import { filterPage, MAX_NAME, renameOnItems } from './labels';
+import { filterPage, labelKey, MAX_NAME, renameOnItems, sharedLabelNames } from './labels';
 import { loadNote } from './notes';
 import { todayIn } from './dates';
 import { dueFromWords } from './due';
@@ -52,9 +52,15 @@ function listOf(value: string | null): unknown[] | undefined {
  * `\*` is a literal star. The matching is a single pass over the name for each part of the search, so no search can
  * make the server slow.
  */
+/**
+ * Case folding for name matches: lower case, and the two letters that lower case alone does not fold to their match. The
+ * Greek final sigma becomes sigma, and the German sharp s becomes ss, as Unicode case folding has them.
+ */
+const foldCase = (text: string): string => text.toLowerCase().replaceAll('ς', 'σ').replaceAll('ß', 'ss');
+
 export function nameMatches(name: string, query: string): boolean {
   const parts: string[] = [];
-  const chars = [...query.toLowerCase()];
+  const chars = [...foldCase(query)];
   let literal = '';
   let starred = false;
   for (let i = 0; i < chars.length; i += 1) {
@@ -72,7 +78,7 @@ export function nameMatches(name: string, query: string): boolean {
   }
   parts.push(literal);
 
-  const text = name.toLowerCase();
+  const text = foldCase(name);
   if (!starred) return text.includes(literal);
   const first = parts[0];
   const last = parts[parts.length - 1];
@@ -91,10 +97,62 @@ export function nameMatches(name: string, query: string): boolean {
 function pageOf(req: Request): { cursor: number; limit: number } {
   const cursor = Number(req.query.get('cursor') ?? 0);
   const limit = Number(req.query.get('limit') ?? DEFAULT_LIMIT);
+  // A safe integer only: SQLite refuses a larger number bound as an OFFSET or LIMIT, and a refused page is a server error.
   return {
-    cursor: Number.isInteger(cursor) && cursor >= 0 ? cursor : 0,
-    limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT,
+    cursor: Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : 0,
+    limit: Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT,
   };
+}
+
+/** One page of a list the server holds in full, and where the next page starts. */
+function pageOfList<T, U>(items: T[], page: { cursor: number; limit: number }, shape: (item: T) => U): { results: U[]; next_cursor: string | null } {
+  return {
+    results: items.slice(page.cursor, page.cursor + page.limit).map((item) => shape(item)),
+    next_cursor: items.length > page.cursor + page.limit ? String(page.cursor + page.limit) : null,
+  };
+}
+
+/** The text a search is for. A search that names no text is refused, rather than read as a search for everything. */
+function searchQueryOf(req: Request): string {
+  const query = req.query.get('query');
+  if (query === null) throw ApiFailure.badRequest('Say what to search for.', 'INVALID_ARGUMENT');
+  return query;
+}
+
+/**
+ * The sections of the projects this person can see: all of them, or those of one project. With a search, only the active
+ * sections whose names match, and only one page of them (plus one more, to tell whether a next page exists): the
+ * database stops at the end of the page rather than listing every match.
+ */
+function visibleSections(db: Db, viewer: UserRow, project: string | null, search?: { query: string; page: { cursor: number; limit: number } }): SectionWithProject[] {
+  const where = [`s.is_deleted = 0`, visibleSql('s.project_id')];
+  const params: Record<string, unknown> = { viewer: viewer.id };
+  if (project) { where.push('s.project_id = @project'); params.project = project; }
+  let tail = 'ORDER BY s.project_id, s.section_order';
+  if (search) {
+    where.push('s.is_archived = 0', 'name_matches(s.name, @query)');
+    Object.assign(params, { query: search.query, limit: search.page.limit + 1, offset: search.page.cursor });
+    tail += ' LIMIT @limit OFFSET @offset';
+  }
+  return db.prepare(`SELECT s.*, p.created_at AS project_created, p.created_by AS owner FROM sections s JOIN projects p ON p.id = s.project_id
+    WHERE ${where.join(' AND ')} ${tail}`).all(params) as SectionWithProject[];
+}
+
+/** The rows of one page, cut by the database to the page plus one, and where the next page starts. */
+function pageFromRows<T, U>(rows: T[], page: { cursor: number; limit: number }, shape: (row: T) => U): { results: U[]; next_cursor: string | null } {
+  return {
+    results: rows.slice(0, page.limit).map((row) => shape(row)),
+    next_cursor: rows.length > page.limit ? String(page.cursor + page.limit) : null,
+  };
+}
+
+/** A page of the personal labels of a person, in the order they keep them, with the name matched in the database when asked. */
+function labelPage(db: Db, userId: string, page: { cursor: number; limit: number }, query?: string): Array<Parameters<typeof labelShape>[0]> {
+  const where = ['user_id = @user', 'is_deleted = 0'];
+  const params: Record<string, unknown> = { user: userId, limit: page.limit + 1, offset: page.cursor };
+  if (query !== undefined) { where.push('name_matches(name, @query)'); params.query = query; }
+  return db.prepare(`SELECT * FROM labels WHERE ${where.join(' AND ')} ORDER BY item_order LIMIT @limit OFFSET @offset`)
+    .all(params) as Array<Parameters<typeof labelShape>[0]>;
 }
 
 function bodyOf(req: Request): Record<string, unknown> {
@@ -161,6 +219,10 @@ function projectRow(db: Db, viewerId: string, id: string): ProjectRow {
 }
 
 export function registerRest(router: Router, db: Db): void {
+  // The task filter compares label names by labelKey, so a label matches whichever case or accents its task spells it with.
+  db.function('label_key', { deterministic: true }, (value: unknown) => (typeof value === 'string' ? labelKey(value) : null));
+  // The name search matches in the database, so a page of a search stops there (see labelPage and visibleSections).
+  db.function('name_matches', { deterministic: true }, (name: unknown, query: unknown) => (typeof name === 'string' && typeof query === 'string' && nameMatches(name, query) ? 1 : 0));
   const viewerOf = (req: Request): UserRow => req.user as UserRow;
   const taskOut = (db: Db, viewer: UserRow, id: string) => {
     const row = itemRow(db, viewer.id, id);
@@ -193,8 +255,8 @@ export function registerRest(router: Router, db: Db): void {
     }
     const label = req.query.get('label');
     if (label) {
-      where.push('EXISTS (SELECT 1 FROM json_each(i.labels) WHERE value = @label)');
-      params.label = label;
+      where.push('EXISTS (SELECT 1 FROM json_each(i.labels) WHERE label_key(value) = @label)');
+      params.label = labelKey(label);
     }
     const ids = listOf(req.query.get('ids'));
     if (ids) {
@@ -376,14 +438,16 @@ export function registerRest(router: Router, db: Db): void {
   /* Sections ---------------------------------------------------------- */
 
   router.add('GET', '/api/v1/sections', 'bearer', (req, res) => {
-    const viewer = viewerOf(req);
-    const project = req.query.get('project_id');
-    const where = [`s.is_deleted = 0`, visibleSql('s.project_id')];
-    const params: Record<string, unknown> = { viewer: viewer.id };
-    if (project) { where.push('s.project_id = @project'); params.project = project; }
-    const rows = db.prepare(`SELECT s.*, p.created_at AS project_created, p.created_by AS owner FROM sections s JOIN projects p ON p.id = s.project_id
-      WHERE ${where.join(' AND ')} ORDER BY s.project_id, s.section_order`).all(params) as SectionWithProject[];
+    const rows = visibleSections(db, viewerOf(req), req.query.get('project_id'));
     res.json({ results: rows.map((row) => sectionShape(row, row.owner, row.project_created)), next_cursor: null });
+  });
+
+  // Sections by name, with the same wildcards as the project search, a page at a time. Registered before /:id.
+  router.add('GET', '/api/v1/sections/search', 'bearer', (req, res) => {
+    const query = searchQueryOf(req);
+    const page = pageOf(req);
+    const rows = visibleSections(db, viewerOf(req), req.query.get('project_id'), { query, page });
+    res.json(pageFromRows(rows, page, (row) => sectionShape(row, row.owner, row.project_created)));
   });
 
   router.add('POST', '/api/v1/sections', 'bearer', (req, res) => {
@@ -423,8 +487,21 @@ export function registerRest(router: Router, db: Db): void {
   /* Labels ------------------------------------------------------------ */
 
   router.add('GET', '/api/v1/labels', 'bearer', (req, res) => {
-    const rows = db.prepare('SELECT * FROM labels WHERE user_id = ? AND is_deleted = 0 ORDER BY item_order').all(viewerOf(req).id);
-    res.json({ results: (rows as Parameters<typeof labelShape>[0][]).map(labelShape), next_cursor: null });
+    const page = pageOf(req);
+    res.json(pageFromRows(labelPage(db, viewerOf(req).id, page), page, labelShape));
+  });
+
+  // What the official find-labels reads: personal labels by name, and the names of shared labels. Both are pages, and
+  // both are registered before /:id.
+  router.add('GET', '/api/v1/labels/search', 'bearer', (req, res) => {
+    const query = searchQueryOf(req);
+    const page = pageOf(req);
+    res.json(pageFromRows(labelPage(db, viewerOf(req).id, page, query), page, labelShape));
+  });
+
+  router.add('GET', '/api/v1/labels/shared', 'bearer', (req, res) => {
+    const omitPersonal = req.query.get('omit_personal') === 'true';
+    res.json(pageOfList(sharedLabelNames(db, viewerOf(req).id, omitPersonal), pageOf(req), (name) => name));
   });
 
   router.add('POST', '/api/v1/labels', 'bearer', (req, res) => {
