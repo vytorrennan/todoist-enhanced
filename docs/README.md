@@ -12,6 +12,7 @@ Every image the README uses, and the tour.
 | `thingstosettle-noestimates.png` | Things to settle |
 | `deploying.md` | Uploading a build, and the two things to check afterwards |
 | `component-language.md` | Where each field and picker lives, its canonical component, and what is left to migrate (#114) |
+| `technical-debt.md` | Debt accepted on purpose, with its cost and what would retire it |
 
 The screenshots are exported from `todoistenhancedvisuals` and copied here, so
 the README never points at a file outside the repository.
